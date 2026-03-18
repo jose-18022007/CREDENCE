@@ -122,7 +122,7 @@ async def test_domain_trust():
 async def main():
     """Run all tests."""
     print("\n" + "=" * 80)
-    print("TRUTHLENS SERVICES TEST SUITE")
+    print("CREDENCE SERVICES TEST SUITE")
     print("=" * 80)
     
     # Test domain trust (no API needed)

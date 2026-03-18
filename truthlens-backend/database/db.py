@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
-DATABASE_PATH = "truthlens.db"
+DATABASE_PATH = "credence.db"
 
 
 async def init_db() -> None:

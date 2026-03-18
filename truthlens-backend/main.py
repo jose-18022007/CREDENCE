@@ -1,4 +1,4 @@
-"""TruthLens API - FastAPI application entry point."""
+"""Credence API - FastAPI application entry point."""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     print("✓ Upload and output directories created")
     yield
     # Shutdown
-    print("Shutting down TruthLens API...")
+    print("Shutting down Credence API...")
 
 
 # Create FastAPI app
@@ -59,7 +59,7 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"]
 async def root():
     """Root endpoint - API health check."""
     return {
-        "status": "TruthLens API is running",
+        "status": "Credence API is running",
         "version": settings.APP_VERSION,
         "endpoints": {
             "text_analysis": "/api/analyze/text",
@@ -77,7 +77,7 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "service": "TruthLens API"}
+    return {"status": "healthy", "service": "Credence API"}
 
 
 if __name__ == "__main__":

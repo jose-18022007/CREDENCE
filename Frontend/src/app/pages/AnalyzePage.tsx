@@ -571,7 +571,7 @@ export function AnalyzePage() {
             </div>
           )}
 
-          {/* IMAGE TAB */}
+         
           {activeTab === "image" && (
             <div>
               <div

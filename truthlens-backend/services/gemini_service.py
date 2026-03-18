@@ -18,22 +18,26 @@ class GeminiService:
     
     def __init__(self):
         """Initialize Gemini service."""
-        self.model_name = "models/gemini-flash-latest"  # Latest flash model with better quota
+        self.model_name = "gemini-flash-latest"  # Correct model name for v1beta API
         self.max_retries = 3
         self.base_delay = 1.0
+        self._last_request_time = 0
+        self._min_request_interval = 2.0  # Minimum 2 seconds between requests
         
     async def analyze_text_content(
         self,
         text: str,
         check_bias: bool = True,
-        check_fallacies: bool = True
+        check_fallacies: bool = True,
+        web_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Analyze text content using Gemini with structured prompt.
+        """Analyze text content using Gemini with structured prompt and web search context.
         
         Args:
             text: Text content to analyze
             check_bias: Whether to check for political bias
             check_fallacies: Whether to check for logical fallacies
+            web_context: Optional web search context (if None, will fetch internally)
             
         Returns:
             Dictionary containing structured analysis results
@@ -41,11 +45,28 @@ class GeminiService:
         if not settings.GEMINI_API_KEY or not client:
             return self._get_fallback_response("Gemini API key not configured")
         
-        prompt = self._build_analysis_prompt(text, check_bias, check_fallacies)
+        # Rate limiting: ensure minimum interval between requests
+        import time
+        current_time = time.time()
+        time_since_last_request = current_time - self._last_request_time
+        if time_since_last_request < self._min_request_interval:
+            wait_time = self._min_request_interval - time_since_last_request
+            print(f"Rate limiting: waiting {wait_time:.1f}s before next request...")
+            await asyncio.sleep(wait_time)
+        
+        # Get web search context if not provided
+        if web_context is None:
+            from services.web_search_service import WebSearchService
+            web_search_service = WebSearchService()
+            web_context = await web_search_service.search_and_compile_context(text)
+        
+        prompt = self._build_analysis_prompt(text, check_bias, check_fallacies, web_context)
         
         # Retry logic with exponential backoff
         for attempt in range(self.max_retries):
             try:
+                self._last_request_time = time.time()  # Update last request time
+                
                 response = client.models.generate_content(
                     model=self.model_name,
                     contents=prompt
@@ -86,28 +107,48 @@ class GeminiService:
         self,
         text: str,
         check_bias: bool,
-        check_fallacies: bool
+        check_fallacies: bool,
+        web_context: Optional[Dict[str, Any]] = None
     ) -> str:
-        """Build structured analysis prompt for Gemini.
+        """Build structured analysis prompt for Gemini with web search context.
         
         Args:
             text: Text to analyze
             check_bias: Include bias analysis
             check_fallacies: Include fallacy detection
+            web_context: Web search context with current information
             
         Returns:
             Formatted prompt string
         """
-        # Truncate text if too long
-        max_length = 8000
-        truncated_text = text[:max_length] + ("..." if len(text) > max_length else "")
+        from datetime import datetime
+        current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
         
-        prompt = f"""You are TruthLens, an expert fact-checking and media integrity AI analyst. Analyze the following content for misinformation, bias, and manipulation.
+        # Get web search context string
+        web_search_context = ""
+        if web_context and web_context.get("context_string"):
+            web_search_context = web_context["context_string"]
+        else:
+            web_search_context = "No web search results available."
+        
+        prompt = f"""You are Credence, an expert fact-checking and media integrity AI analyst. Your job is to analyze content for misinformation by comparing it against the LATEST real-time web search results provided below.
+
+IMPORTANT INSTRUCTIONS:
+- You have been provided with REAL-TIME web search results from the internet retrieved just now.
+- Use these search results as your PRIMARY source of truth for current events.
+- If the claim is about a RECENT event and multiple credible news sources in the search results confirm it, it is likely TRUE — do NOT mark it as fake just because you haven't seen it in your training data.
+- If the claim CONTRADICTS what credible sources in the search results are reporting, it is likely FALSE or MISLEADING.
+- If NO credible sources in the search results mention or confirm the claim, it may be UNVERIFIED (not necessarily fake).
+- Always distinguish between: "I can't verify this" vs "This is proven false."
+- Consider the CREDIBILITY of the sources in the search results (Reuters, AP, BBC, major newspapers = highly credible; random blogs, unknown sites = low credibility).
 
 CONTENT TO ANALYZE:
-{truncated_text}
+{text}
 
-Perform the following analysis and return a JSON response:
+REAL-TIME WEB SEARCH RESULTS (Retrieved on {current_datetime}):
+{web_search_context}
+
+Now perform the following analysis and return a JSON response:
 
 1. CLAIM_EXTRACTION: Extract every factual claim made in this content. List each claim separately.
 
@@ -115,8 +156,10 @@ Perform the following analysis and return a JSON response:
    - claim_text: the exact claim
    - verdict: one of "TRUE", "FALSE", "MISLEADING", "UNVERIFIED", "PARTIALLY_TRUE"
    - confidence: 0-100
-   - reasoning: brief explanation of why you rated it this way
-   - evidence: what evidence supports or contradicts this claim
+   - reasoning: brief explanation — CITE specific search results that support or contradict this claim
+   - supporting_sources: list of sources from the search results that confirm this claim (include source name and URL if available)
+   - contradicting_sources: list of sources that contradict this claim
+   - evidence: what evidence from the search results supports or contradicts this
 
 3. LANGUAGE_ANALYSIS:
    - sensationalism_score: 0-100 (how sensationalist is the language)
@@ -135,13 +178,20 @@ Perform the following analysis and return a JSON response:
 5. OVERALL_ASSESSMENT:
    - trust_score: 0-100 (overall credibility score)
    - verdict: one of "VERIFIED", "MOSTLY_CREDIBLE", "SUSPICIOUS", "LIKELY_MISLEADING", "FAKE_FABRICATED"
-   - summary: 2-3 sentence summary explaining your assessment
+   - summary: 2-3 sentence summary — reference the search results in your explanation
    - red_flags: list of specific red flags found
    - key_concerns: list of main concerns about this content
+   - sources_confirming: number of credible sources that confirm the claims
+   - sources_contradicting: number of sources that contradict the claims
 
 6. VIRAL_FORWARD_CHECK:
    - is_viral_forward: boolean (does this look like a WhatsApp/social media forward)
    - forward_patterns: list of patterns detected (e.g., "forward to 10 people", "share before deleted", "government confirmed")
+
+7. RECENCY_ASSESSMENT:
+   - is_recent_event: boolean (is this about something that happened recently)
+   - event_date_approximate: string (when did this event reportedly happen)
+   - coverage_level: one of "WIDELY_COVERED", "MODERATELY_COVERED", "BARELY_COVERED", "NO_COVERAGE_FOUND"
 
 Return ONLY valid JSON. No markdown, no explanation outside JSON."""
         

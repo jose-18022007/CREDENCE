@@ -17,3 +17,7 @@ python-multipart
 aiofiles
 httpx
 aiosqlite
+duckduckgo-search==6.3.5
+openai-whisper==20231117
+matplotlib==3.8.2
+opencv-python-headless==4.8.1.78

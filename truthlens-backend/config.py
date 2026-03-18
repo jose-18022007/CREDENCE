@@ -1,4 +1,4 @@
-"""Configuration management for TruthLens API."""
+"""Configuration management for Credence API."""
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -16,7 +16,7 @@ class Settings:
     HUGGINGFACE_API_KEY: str = os.getenv("HUGGINGFACE_API_KEY", "")
     
     # Application Settings
-    APP_NAME: str = "TruthLens API"
+    APP_NAME: str = "Credence API"
     APP_VERSION: str = "1.0.0"
     APP_DESCRIPTION: str = "AI-Powered Fake News Detection & Media Integrity Platform"
     
@@ -34,7 +34,7 @@ class Settings:
     SUPPORTED_AUDIO_FORMATS: list[str] = [".mp3", ".wav", ".m4a", ".ogg", ".flac"]
     
     # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///./truthlens.db"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./credence.db"
     
     # CORS
     CORS_ORIGINS: list[str] = ["*"]  # Allow all origins for hackathon

@@ -128,82 +128,6 @@ export function HomePage() {
               <Play size={16} fill={NAVY} /> Watch Demo
             </Link>
           </div>
-
-          {/* Mockup trust score */}
-          <div
-            style={{
-              maxWidth: 480,
-              margin: "0 auto",
-              backgroundColor: "#FFFFFF",
-              borderRadius: 16,
-              border: `1px solid ${BORDER}`,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
-              padding: "28px 32px",
-              textAlign: "left",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  backgroundColor: "#FEF3C7",
-                  borderRadius: 8,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Newspaper size={18} color={AMBER} />
-              </div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>Analyzing article...</div>
-                <div style={{ fontSize: 12, color: TEXT_MUTED }}>example.com/breaking-news</div>
-              </div>
-              <div style={{ marginLeft: "auto" }}>
-                <span
-                  style={{
-                    backgroundColor: "#FEF3C7",
-                    color: AMBER,
-                    borderRadius: 20,
-                    padding: "3px 10px",
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  ⚠ SUSPICIOUS
-                </span>
-              </div>
-            </div>
-
-            {/* Gauge */}
-            <div style={{ textAlign: "center", marginBottom: 18 }}>
-              <svg width="160" height="90" viewBox="0 0 160 90">
-                <path d="M 15 80 A 65 65 0 0 1 145 80" fill="none" stroke="#F1F5F9" strokeWidth="12" strokeLinecap="round" />
-                <path d="M 15 80 A 65 65 0 0 1 145 80" fill="none" stroke="#FCD34D" strokeWidth="12" strokeLinecap="round"
-                  strokeDasharray="204" strokeDashoffset="102" />
-                <text x="80" y="68" textAnchor="middle" fill={NAVY} fontSize="26" fontWeight="800">42</text>
-                <text x="80" y="82" textAnchor="middle" fill={TEXT_MUTED} fontSize="11">Trust Score</text>
-              </svg>
-            </div>
-
-            {/* Progress bars */}
-            {[
-              { label: "Source Credibility", pct: 28, color: RED },
-              { label: "Claim Accuracy", pct: 45, color: AMBER },
-              { label: "Language Bias", pct: 72, color: AMBER },
-            ].map((item) => (
-              <div key={item.label} style={{ marginBottom: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, color: TEXT_MUTED }}>{item.label}</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: item.color }}>{item.pct}%</span>
-                </div>
-                <div style={{ height: 6, backgroundColor: "#F1F5F9", borderRadius: 4, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${item.pct}%`, backgroundColor: item.color, borderRadius: 4 }} />
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -266,7 +190,7 @@ export function HomePage() {
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 56 }}>
             <h2 style={{ fontSize: "clamp(26px, 4vw, 36px)", fontWeight: 800, color: NAVY, marginBottom: 12, letterSpacing: "-0.5px" }}>
-              What Can TruthLens Detect?
+              What Can Credence Detect?
             </h2>
             <p style={{ fontSize: 16, color: TEXT_MUTED, maxWidth: 520, margin: "0 auto" }}>
               Comprehensive media integrity analysis powered by multiple AI models and fact-check databases.
@@ -600,7 +524,7 @@ export function HomePage() {
                 >
                   <Shield size={14} color="#FFFFFF" />
                 </div>
-                <span style={{ fontWeight: 700, fontSize: 16, color: "#FFFFFF" }}>TruthLens</span>
+                <span style={{ fontWeight: 700, fontSize: 16, color: "#FFFFFF" }}>Credence</span>
               </div>
               <p style={{ fontSize: 13, lineHeight: 1.7, color: "rgba(255,255,255,0.5)" }}>
                 AI-powered media integrity platform fighting misinformation across all content types.
@@ -644,7 +568,7 @@ export function HomePage() {
             }}
           >
             <span style={{ fontSize: 13, color: "rgba(255,255,255,0.4)" }}>
-              © 2025 TruthLens · Built for Hackathon 2025 🏆
+              © 2026 Credence · ThunderBoltz
             </span>
             <div style={{ display: "flex", gap: 16 }}>
               {[<Twitter size={16} />, <Github size={16} />, <Linkedin size={16} />].map((icon, i) => (

@@ -56,7 +56,7 @@ export function Navbar() {
               />
             </div>
             <span style={{ fontWeight: 700, fontSize: 20, color: "#1E3A5F", letterSpacing: "-0.5px" }}>
-              TruthLens
+              Credence
             </span>
           </Link>
 

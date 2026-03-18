@@ -22,21 +22,22 @@ class ScoringService:
             Trust score (0-100)
         """
         # Determine weights based on available data
+        # INCREASED cross_reference weight to prioritize fact-checks and news
         if not has_source and not has_media:
-            # Text-only analysis
+            # Text-only analysis - prioritize fact-checks and cross-reference
             weights = {
-                "content": 0.45,
-                "language": 0.30,
-                "cross_reference": 0.25
+                "content": 0.40,  # Fact-checks (if available) or Gemini
+                "language": 0.25,
+                "cross_reference": 0.35  # Increased from 0.25 to prioritize external verification
             }
         else:
             # Full analysis with source/media
             weights = {
-                "content": 0.30,
-                "source": 0.25,
-                "media": 0.25,
+                "content": 0.30,  # Fact-checks (if available) or Gemini
+                "source": 0.20,
+                "media": 0.20,
                 "language": 0.10,
-                "cross_reference": 0.10
+                "cross_reference": 0.20  # Increased from 0.10 to prioritize external verification
             }
         
         score = 0.0
@@ -70,12 +71,34 @@ class ScoringService:
     def _calculate_content_score(analysis_data: Dict[str, Any]) -> float:
         """Calculate content credibility score from claim verification.
         
+        PRIORITIZES FACT-CHECK RESULTS OVER GEMINI (since Gemini doesn't have current events).
+        
         Args:
             analysis_data: Analysis data
             
         Returns:
             Content score (0-100)
         """
+        # PRIORITY 1: Use fact-check results if available (most reliable for current events)
+        factcheck_data = analysis_data.get("factcheck_results", {})
+        if factcheck_data.get("has_fact_checks", False):
+            verified = factcheck_data.get("verified_count", 0)
+            false = factcheck_data.get("false_count", 0)
+            mixed = factcheck_data.get("mixed_count", 0)
+            total = verified + false + mixed
+            
+            if total > 0:
+                # Fact-check based score (heavily weighted)
+                score = (
+                    (verified * 100) +
+                    (mixed * 50) +
+                    (false * 0)
+                ) / total
+                
+                # If we have fact-checks, use them as primary source
+                return score
+        
+        # PRIORITY 2: Use Gemini analysis as fallback (for general content analysis)
         gemini_result = analysis_data.get("gemini_result", {})
         
         # Use Gemini's overall trust score if available

@@ -1,5 +1,5 @@
 /**
- * API Service for TruthLens Backend
+ * API Service for Credence Backend
  * Uses Vite proxy in development, direct URL in production
  */
 
@@ -39,12 +39,23 @@ export interface AnalysisResponse {
     deepfake_probability: number | null;
     ai_voice_probability: number | null;
     spectrogram_url: string | null;
+    transcription: string | null;
+    splice_detection: any | null;
+    video_metadata: any | null;
+    deepfake_frames: any | null;
   };
   cross_reference: {
     factcheck_results: any[];
     related_articles: any[];
     credible_sources_count: number;
     unreliable_sources_count: number;
+  };
+  web_search_evidence?: {
+    search_performed: boolean;
+    total_results_found: number;
+    news_results_count: number;
+    search_timestamp: string | null;
+    coverage_level: string | null;
   };
   red_flags: string[];
   timestamp: string;

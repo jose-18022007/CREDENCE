@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "=================================="
-echo "TruthLens Backend Quick Start"
+echo "Credence Backend Quick Start"
 echo "=================================="
 echo ""
 

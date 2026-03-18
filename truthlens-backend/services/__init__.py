@@ -1,4 +1,4 @@
-"""Services for TruthLens API."""
+"""Services for Credence API."""
 from .gemini_service import GeminiService, analyze_with_gemini
 from .factcheck_service import FactCheckService, check_facts
 from .news_service import NewsService, cross_reference_news

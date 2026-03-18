@@ -1,4 +1,4 @@
-"""Data models for TruthLens API."""
+"""Data models for Credence API."""
 from .schemas import (
     TextAnalysisRequest,
     URLAnalysisRequest,

@@ -30,23 +30,33 @@ async def analyze_text(request: TextAnalysisRequest):
         analysis_id = generate_uuid()
         
         # Initialize services
+        from services.web_search_service import WebSearchService
+        web_search_service = WebSearchService()
         gemini_service = GeminiService()
         factcheck_service = FactCheckService()
         news_service = NewsService()
         scoring_service = ScoringService()
         
-        # Step 1: Analyze with Gemini (comprehensive structured analysis)
+        # Step 1: WEB SEARCH - Get current context about the claim (CRITICAL FOR RECENT EVENTS)
+        print(f"[1/5] Performing web search for current context...")
+        web_context = await web_search_service.search_and_compile_context(request.text)
+        print(f"Web search found {web_context['total_results_found']} results")
+        
+        # Step 2: Analyze with Gemini (with web search context for current events)
+        print(f"[2/5] Analyzing with Gemini (with web context)...")
         gemini_result = await gemini_service.analyze_text_content(
             request.text,
             check_bias=request.check_bias,
-            check_fallacies=request.check_fallacies
+            check_fallacies=request.check_fallacies,
+            web_context=web_context
         )
         
         # Extract claims from Gemini analysis
         gemini_claims = gemini_result.get("CLAIM_VERIFICATION", [])
         claim_texts = [c.get("claim_text", "") for c in gemini_claims if c.get("claim_text")]
         
-        # Step 2: Fact-check claims (with error handling)
+        # Step 3: Fact-check claims (with error handling)
+        print(f"[3/5] Fact-checking {len(claim_texts)} claims...")
         factcheck_results = {}
         try:
             if claim_texts:
@@ -55,7 +65,8 @@ async def analyze_text(request: TextAnalysisRequest):
             print(f"Fact-check service error (continuing without it): {e}")
             factcheck_results = {"fact_checks_found": 0, "results": [], "has_fact_checks": False}
         
-        # Step 3: Cross-reference with news (with error handling)
+        # Step 4: Cross-reference with news (with error handling)
+        print(f"[4/5] Cross-referencing with news sources...")
         news_cross_ref = {}
         try:
             # Use first claim or first 100 chars of text
@@ -69,6 +80,8 @@ async def analyze_text(request: TextAnalysisRequest):
                 "all_articles": [],
                 "cross_reference_score": 50
             }
+        
+        print(f"[5/5] Calculating trust score...")
         
         # Build response components from Gemini analysis
         lang_analysis = gemini_result.get("LANGUAGE_ANALYSIS", {})
@@ -133,8 +146,11 @@ async def analyze_text(request: TextAnalysisRequest):
         )
         
         # Calculate comprehensive trust score
+        # IMPORTANT: Pass fact-check results AND web search context to scoring service
         analysis_data = {
             "gemini_result": gemini_result,
+            "factcheck_results": factcheck_results,  # Added for fact-check prioritization
+            "web_search_context": web_context,  # Added for web search evidence
             "source_credibility": {"score": source_credibility.score},
             "cross_reference": {
                 "credible_sources_count": cross_reference.credible_sources_count,
@@ -160,19 +176,35 @@ async def analyze_text(request: TextAnalysisRequest):
             red_flags.append("No credible news sources found reporting this")
         
         # Build response
+        # Extract recency assessment from Gemini
+        recency = gemini_result.get("RECENCY_ASSESSMENT", {})
+        
+        # Build web search evidence
+        web_search_evidence = None
+        if web_context:
+            from models.schemas import WebSearchEvidence
+            web_search_evidence = WebSearchEvidence(
+                search_performed=True,
+                total_results_found=web_context.get("total_results_found", 0),
+                news_results_count=len(web_context.get("news_results", [])),
+                search_timestamp=web_context.get("search_timestamp"),
+                coverage_level=recency.get("coverage_level", "UNKNOWN")
+            )
+        
         response = AnalysisResponse(
             analysis_id=analysis_id,
             overall_trust_score=trust_score,
             verdict=verdict,
             summary=overall_assessment.get(
                 "summary",
-                f"Analysis completed: {len(gemini_claims)} claims verified, {factcheck_results.get('fact_checks_found', 0)} external fact-checks found"
+                f"Analysis completed: {len(gemini_claims)} claims verified, {factcheck_results.get('fact_checks_found', 0)} external fact-checks found, {web_context.get('total_results_found', 0)} web sources searched"
             ),
             source_credibility=source_credibility,
             claim_verification=claim_verification,
             language_analysis=language_analysis,
             media_integrity=media_integrity,
             cross_reference=cross_reference,
+            web_search_evidence=web_search_evidence,
             red_flags=list(set(red_flags))  # Remove duplicates
         )
         

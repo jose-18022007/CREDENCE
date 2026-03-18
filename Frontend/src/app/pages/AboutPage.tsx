@@ -50,15 +50,15 @@ const TEAM = [
 
 const FAQS = [
   {
-    q: "How accurate is TruthLens?",
-    a: "TruthLens achieves approximately 87% accuracy on our benchmark dataset. We cross-reference multiple AI models and fact-check databases to minimize false positives. We always recommend treating results as one input among many — not as definitive truth.",
+    q: "How accurate is Credence?",
+    a: "Credence achieves approximately 87% accuracy on our benchmark dataset. We cross-reference multiple AI models and fact-check databases to minimize false positives. We always recommend treating results as one input among many — not as definitive truth.",
   },
   {
     q: "What data is stored when I analyze content?",
     a: "We store anonymized metadata about analysis requests (type, score, date) to improve our models. We do not store the actual content you analyze. Your privacy is protected — no personal information is collected without explicit consent.",
   },
   {
-    q: "Can TruthLens detect all AI-generated images?",
+    q: "Can Credence detect all AI-generated images?",
     a: "We can detect the majority of AI-generated images with high confidence, especially from major generators like Midjourney, DALL-E 3, and Stable Diffusion. However, as AI generation technology evolves rapidly, no detector can guarantee 100% accuracy. We continuously update our models.",
   },
   {
@@ -70,7 +70,7 @@ const FAQS = [
     a: "Source credibility is calculated from multiple signals: domain age, historical fact-check flags, known bias ratings from NewsGuard and AllSides, WHOIS data, SSL certificate status, and cross-reference with credibility index databases like MBFC and IFCN.",
   },
   {
-    q: "What should I do if TruthLens gets it wrong?",
+    q: "What should I do if Credence gets it wrong?",
     a: "Use the 'Report Inaccuracy' button on any report page. Our team reviews flagged reports within 24 hours. These corrections are used to retrain our models. We take accuracy very seriously and appreciate community feedback.",
   },
 ];
@@ -158,7 +158,7 @@ export function AboutPage() {
             Fighting Misinformation<br />with AI Precision
           </h1>
           <p style={{ fontSize: 17, color: TEXT_MUTED, lineHeight: 1.7 }}>
-            TruthLens was built at Hackathon 2025 with a simple mission: make fact-checking accessible, fast, and comprehensive for everyone — from journalists to everyday readers.
+            Credence was built at Hackathon 2025 with a simple mission: make fact-checking accessible, fast, and comprehensive for everyone — from journalists to everyday readers.
           </p>
         </div>
       </section>
@@ -176,7 +176,7 @@ export function AboutPage() {
                 We believe that access to truth shouldn't require a journalism degree. In a world where AI-generated content is indistinguishable from reality, everyone deserves powerful verification tools.
               </p>
               <p style={{ fontSize: 15, color: TEXT_MUTED, lineHeight: 1.75 }}>
-                TruthLens combines state-of-the-art AI models with established fact-check databases to provide the most comprehensive media integrity analysis available today.
+                Credence combines state-of-the-art AI models with established fact-check databases to provide the most comprehensive media integrity analysis available today.
               </p>
               <div style={{ marginTop: 28, display: "flex", gap: 24 }}>
                 {[
@@ -347,7 +347,7 @@ export function AboutPage() {
             <h2 style={{ fontSize: "clamp(24px, 3.5vw, 34px)", fontWeight: 800, color: NAVY, marginBottom: 10, letterSpacing: "-0.5px" }}>
               Frequently Asked Questions
             </h2>
-            <p style={{ fontSize: 15, color: TEXT_MUTED }}>Everything you need to know about TruthLens</p>
+            <p style={{ fontSize: 15, color: TEXT_MUTED }}>Everything you need to know about Credence</p>
           </div>
           <div
             style={{

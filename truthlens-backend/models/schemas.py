@@ -53,6 +53,10 @@ class MediaIntegrity(BaseModel):
     deepfake_probability: Optional[float] = Field(None, ge=0, le=1, description="Deepfake probability")
     ai_voice_probability: Optional[float] = Field(None, ge=0, le=1, description="AI voice probability")
     spectrogram_url: Optional[str] = Field(None, description="URL to spectrogram image")
+    transcription: Optional[str] = Field(None, description="Audio transcription text")
+    splice_detection: Optional[Dict[str, Any]] = Field(None, description="Audio splice detection results")
+    video_metadata: Optional[Dict[str, Any]] = Field(None, description="Video metadata")
+    deepfake_frames: Optional[Dict[str, Any]] = Field(None, description="Deepfake frame analysis")
 
 
 class CrossReference(BaseModel):
@@ -61,6 +65,15 @@ class CrossReference(BaseModel):
     related_articles: List[Dict[str, Any]] = Field(default_factory=list)
     credible_sources_count: int = Field(0)
     unreliable_sources_count: int = Field(0)
+
+
+class WebSearchEvidence(BaseModel):
+    """Web search evidence for current events."""
+    search_performed: bool = Field(False, description="Whether web search was performed")
+    total_results_found: int = Field(0, description="Total search results found")
+    news_results_count: int = Field(0, description="Number of news articles found")
+    search_timestamp: Optional[str] = Field(None, description="When the search was performed")
+    coverage_level: Optional[str] = Field(None, description="Coverage level of the claim")
 
 
 class AnalysisResponse(BaseModel):
@@ -74,6 +87,7 @@ class AnalysisResponse(BaseModel):
     language_analysis: LanguageAnalysis
     media_integrity: MediaIntegrity
     cross_reference: CrossReference
+    web_search_evidence: Optional[WebSearchEvidence] = Field(None, description="Web search evidence for current events")
     red_flags: List[str] = Field(default_factory=list, description="List of red flags detected")
     timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     

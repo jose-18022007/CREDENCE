@@ -22,7 +22,7 @@ async def test_gemini_analysis():
     """
     
     print("=" * 80)
-    print("TESTING TRUTHLENS GEMINI ANALYSIS ENGINE")
+    print("TESTING CREDENCE GEMINI ANALYSIS ENGINE")
     print("=" * 80)
     print("\nSample Text:")
     print("-" * 80)

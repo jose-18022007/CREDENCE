@@ -426,7 +426,55 @@ export function ResultsPage() {
                     "{claim.claim_text}"
                   </div>
                   {claim.reasoning && (
-                    <p style={{ fontSize: 13, color: TEXT_MUTED, lineHeight: 1.6 }}>{claim.reasoning}</p>
+                    <p style={{ fontSize: 13, color: TEXT_MUTED, lineHeight: 1.6, marginBottom: 10 }}>{claim.reasoning}</p>
+                  )}
+                  
+                  {/* External Fact-Check Results */}
+                  {claim.external_fact_checks && claim.external_fact_checks.length > 0 && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${BORDER}` }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: TEXT_MUTED, marginBottom: 8 }}>
+                        🔍 External Fact-Checks
+                      </div>
+                      {claim.external_fact_checks.map((fc: any, fcIdx: number) => (
+                        <div key={fcIdx} style={{ marginBottom: 8, padding: "8px 12px", backgroundColor: BG_LIGHT, borderRadius: 6 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: TEXT, marginBottom: 4 }}>
+                            {fc.fact_checker_name}
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: fc.fact_check_rating.toLowerCase().includes("false") ? RED : fc.fact_check_rating.toLowerCase().includes("true") ? GREEN : AMBER,
+                                backgroundColor: `${fc.fact_check_rating.toLowerCase().includes("false") ? RED : fc.fact_check_rating.toLowerCase().includes("true") ? GREEN : AMBER}15`,
+                                borderRadius: 4,
+                                padding: "2px 8px",
+                              }}
+                            >
+                              {fc.fact_check_rating}
+                            </span>
+                            {fc.fact_checker_url && (
+                              <a
+                                href={fc.fact_checker_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  fontSize: 11,
+                                  color: TEAL,
+                                  textDecoration: "none",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                View Fact-Check <ExternalLink size={10} />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               ))}
@@ -466,6 +514,299 @@ export function ResultsPage() {
           </div>
         </CollapsibleCard>
 
+        {/* Card 3.5: Media Integrity (for images/videos/audio) */}
+        {analysisData.media_integrity && (
+          analysisData.media_integrity.ai_generated_probability !== null ||
+          analysisData.media_integrity.exif_data ||
+          analysisData.media_integrity.ela_result ||
+          analysisData.media_integrity.deepfake_probability !== null
+        ) && (
+          <CollapsibleCard
+            icon={<Image size={18} color={TEAL} />}
+            title="Media Integrity Analysis"
+            badge={
+              analysisData.media_integrity.ai_generated_probability !== null && analysisData.media_integrity.ai_generated_probability > 0.7
+                ? "AI Generated"
+                : analysisData.media_integrity.deepfake_probability !== null && analysisData.media_integrity.deepfake_probability > 0.7
+                ? "Deepfake Detected"
+                : "Analyzed"
+            }
+            badgeColor={
+              (analysisData.media_integrity.ai_generated_probability !== null && analysisData.media_integrity.ai_generated_probability > 0.7) ||
+              (analysisData.media_integrity.deepfake_probability !== null && analysisData.media_integrity.deepfake_probability > 0.7)
+                ? RED
+                : GREEN
+            }
+            defaultOpen={true}
+          >
+            <div>
+              {/* AI Generated Detection */}
+              {analysisData.media_integrity.ai_generated_probability !== null && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>AI-Generated Detection</div>
+                  <ProgressBar
+                    value={Math.round(analysisData.media_integrity.ai_generated_probability * 100)}
+                    color={analysisData.media_integrity.ai_generated_probability > 0.7 ? RED : analysisData.media_integrity.ai_generated_probability > 0.5 ? AMBER : GREEN}
+                    label="AI-Generated Probability"
+                    percent
+                  />
+                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginTop: 8 }}>
+                    <span style={{ fontSize: 13, color: TEXT }}>
+                      {analysisData.media_integrity.ai_generated_probability > 0.7
+                        ? "High probability this content was AI-generated (MidJourney, DALL-E, Stable Diffusion)"
+                        : analysisData.media_integrity.ai_generated_probability > 0.5
+                        ? "Moderate probability of AI generation"
+                        : "Likely authentic human-created content"}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Deepfake Detection */}
+              {analysisData.media_integrity.deepfake_probability !== null && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>🎭 Deepfake Detection</div>
+                  <ProgressBar
+                    value={Math.round(analysisData.media_integrity.deepfake_probability * 100)}
+                    color={analysisData.media_integrity.deepfake_probability > 0.7 ? RED : analysisData.media_integrity.deepfake_probability > 0.5 ? AMBER : GREEN}
+                    label="Deepfake Probability"
+                    percent
+                  />
+                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginTop: 8 }}>
+                    <span style={{ fontSize: 13, color: TEXT }}>
+                      {analysisData.media_integrity.deepfake_probability > 0.7
+                        ? "High probability of deepfake manipulation detected"
+                        : analysisData.media_integrity.deepfake_probability > 0.5
+                        ? "Moderate probability of deepfake"
+                        : "Likely authentic video"}
+                    </span>
+                  </div>
+                  
+                  {/* Video-specific deepfake details */}
+                  {analysisData.media_integrity.deepfake_frames && (
+                    <div style={{ marginTop: 12, padding: "10px 14px", backgroundColor: "#FEF3C7", borderRadius: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: TEXT, marginBottom: 6 }}>
+                        Frame Analysis: {analysisData.media_integrity.deepfake_frames.frames_analyzed} frames analyzed
+                      </div>
+                      {analysisData.media_integrity.deepfake_frames.frames_flagged > 0 && (
+                        <div style={{ fontSize: 12, color: RED }}>
+                          ⚠️ {analysisData.media_integrity.deepfake_frames.frames_flagged} frame(s) flagged as deepfake
+                        </div>
+                      )}
+                      <div style={{ fontSize: 12, color: TEXT_MUTED, marginTop: 4 }}>
+                        Max probability: {analysisData.media_integrity.deepfake_frames.max_deepfake_probability}%
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Video Metadata */}
+              {analysisData.media_integrity.video_metadata && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>📹 Video Metadata</div>
+                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
+                      <strong>Duration:</strong> {analysisData.media_integrity.video_metadata.duration_formatted}
+                    </div>
+                    <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
+                      <strong>Resolution:</strong> {analysisData.media_integrity.video_metadata.resolution}
+                    </div>
+                    <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
+                      <strong>Codec:</strong> {analysisData.media_integrity.video_metadata.codec}
+                    </div>
+                    {analysisData.media_integrity.video_metadata.creation_tool && analysisData.media_integrity.video_metadata.creation_tool !== "Unknown" && (
+                      <div style={{ fontSize: 13, color: TEXT }}>
+                        <strong>Creation Tool:</strong> {analysisData.media_integrity.video_metadata.creation_tool}
+                      </div>
+                    )}
+                  </div>
+                  {analysisData.media_integrity.video_metadata.is_ai_tool_detected && (
+                    <div style={{ padding: "10px 14px", backgroundColor: "#FEE2E2", borderRadius: 8 }}>
+                      <span style={{ fontSize: 13, color: RED, fontWeight: 600 }}>
+                        ⚠️ AI Video Tool Detected: {analysisData.media_integrity.video_metadata.ai_tool_name}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* EXIF Metadata */}
+              {analysisData.media_integrity.exif_data && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>📷 EXIF Metadata</div>
+                  {analysisData.media_integrity.exif_data.has_metadata ? (
+                    <div>
+                      <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginBottom: 8 }}>
+                        {analysisData.media_integrity.exif_data.camera_make && (
+                          <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
+                            <strong>Camera:</strong> {analysisData.media_integrity.exif_data.camera_make} {analysisData.media_integrity.exif_data.camera_model}
+                          </div>
+                        )}
+                        {analysisData.media_integrity.exif_data.software && analysisData.media_integrity.exif_data.software !== "None" && (
+                          <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
+                            <strong>Software:</strong> {analysisData.media_integrity.exif_data.software}
+                          </div>
+                        )}
+                        {analysisData.media_integrity.exif_data.datetime && analysisData.media_integrity.exif_data.datetime !== "Unknown" && (
+                          <div style={{ fontSize: 13, color: TEXT }}>
+                            <strong>Date:</strong> {analysisData.media_integrity.exif_data.datetime}
+                          </div>
+                        )}
+                      </div>
+                      {analysisData.media_integrity.exif_data.warnings && analysisData.media_integrity.exif_data.warnings.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: AMBER, marginBottom: 6 }}>⚠️ Warnings:</div>
+                          {analysisData.media_integrity.exif_data.warnings.map((warning: string, i: number) => (
+                            <div key={i} style={{ fontSize: 12, color: TEXT_MUTED, marginBottom: 4 }}>• {warning}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ padding: "10px 14px", backgroundColor: "#FEF3C7", borderRadius: 8 }}>
+                      <span style={{ fontSize: 13, color: AMBER, fontWeight: 600 }}>⚠️ No metadata found - possibly stripped</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ELA Analysis */}
+              {analysisData.media_integrity.ela_result && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>🔍 Error Level Analysis (ELA)</div>
+                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, color: TEXT }}>
+                      ELA detects image manipulation by analyzing compression artifacts. Manipulated regions show higher error levels.
+                    </span>
+                  </div>
+                  {analysisData.media_integrity.ela_result && (
+                    <a
+                      href={`http://localhost:8000${analysisData.media_integrity.ela_result}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "8px 14px",
+                        backgroundColor: TEAL,
+                        color: "#FFFFFF",
+                        borderRadius: 8,
+                        textDecoration: "none",
+                        fontSize: 13,
+                        fontWeight: 600,
+                      }}
+                    >
+                      View ELA Image <ExternalLink size={14} />
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {/* AI Voice Detection */}
+              {analysisData.media_integrity.ai_voice_probability !== null && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>🎤 AI Voice Detection</div>
+                  <ProgressBar
+                    value={Math.round(analysisData.media_integrity.ai_voice_probability * 100)}
+                    color={analysisData.media_integrity.ai_voice_probability > 0.7 ? RED : analysisData.media_integrity.ai_voice_probability > 0.5 ? AMBER : GREEN}
+                    label="AI Voice Probability"
+                    percent
+                  />
+                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginTop: 8 }}>
+                    <span style={{ fontSize: 13, color: TEXT }}>
+                      {analysisData.media_integrity.ai_voice_probability > 0.7
+                        ? "High probability of AI-generated voice (ElevenLabs, voice cloning)"
+                        : analysisData.media_integrity.ai_voice_probability > 0.5
+                        ? "Moderate probability of AI voice"
+                        : "Likely authentic human voice"}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Audio Transcription */}
+              {analysisData.media_integrity.transcription && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>📝 Audio Transcription</div>
+                  <div style={{ 
+                    padding: "12px 16px", 
+                    backgroundColor: BG_LIGHT, 
+                    borderRadius: 8,
+                    maxHeight: 200,
+                    overflowY: "auto",
+                    fontSize: 13,
+                    color: TEXT,
+                    lineHeight: 1.6,
+                    fontFamily: "monospace"
+                  }}>
+                    {analysisData.media_integrity.transcription}
+                  </div>
+                </div>
+              )}
+
+              {/* Spectrogram */}
+              {analysisData.media_integrity.spectrogram_url && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>📊 Spectrogram Analysis</div>
+                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, color: TEXT }}>
+                      Frequency analysis over time. AI-generated voices often show unnatural patterns in high frequencies.
+                    </span>
+                  </div>
+                  <a
+                    href={`http://localhost:8000${analysisData.media_integrity.spectrogram_url}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "8px 14px",
+                      backgroundColor: TEAL,
+                      color: "#FFFFFF",
+                      borderRadius: 8,
+                      textDecoration: "none",
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    View Spectrogram <ExternalLink size={14} />
+                  </a>
+                </div>
+              )}
+
+              {/* Audio Splice Detection */}
+              {analysisData.media_integrity.splice_detection && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>✂️ Splice Detection</div>
+                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8 }}>
+                    {analysisData.media_integrity.splice_detection.splice_detected ? (
+                      <div>
+                        <div style={{ fontSize: 13, color: RED, fontWeight: 600, marginBottom: 6 }}>
+                          ⚠️ Audio splicing detected
+                        </div>
+                        <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
+                          <strong>Splice Points:</strong> {analysisData.media_integrity.splice_detection.potential_splice_points?.join(", ")}s
+                        </div>
+                        <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
+                          <strong>Confidence:</strong> {analysisData.media_integrity.splice_detection.confidence}%
+                        </div>
+                        <div style={{ fontSize: 12, color: TEXT_MUTED }}>
+                          {analysisData.media_integrity.splice_detection.notes}
+                        </div>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 13, color: GREEN }}>✓ No audio splicing detected</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CollapsibleCard>
+        )}
+
         {/* Card 4: Cross-Reference */}
         {analysisData.cross_reference.related_articles.length > 0 && (
           <CollapsibleCard
@@ -475,6 +816,29 @@ export function ResultsPage() {
             badgeColor={analysisData.cross_reference.credible_sources_count > 0 ? GREEN : RED}
           >
             <div>
+              {/* Web Search Evidence Badge */}
+              {analysisData.web_search_evidence?.search_performed && (
+                <div style={{ marginBottom: 16, padding: "12px 16px", backgroundColor: "#EFF6FF", borderRadius: 8, border: "1px solid #3B82F6" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <Search size={14} color="#3B82F6" />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#3B82F6" }}>
+                      Real-Time Web Search Performed
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: TEXT_MUTED }}>
+                    Searched {analysisData.web_search_evidence.total_results_found} sources including {analysisData.web_search_evidence.news_results_count} news articles
+                    {analysisData.web_search_evidence.coverage_level && (
+                      <span> • Coverage: <strong>{analysisData.web_search_evidence.coverage_level.replace(/_/g, " ")}</strong></span>
+                    )}
+                  </div>
+                  {analysisData.web_search_evidence.search_timestamp && (
+                    <div style={{ fontSize: 11, color: TEXT_MUTED, marginTop: 4 }}>
+                      Searched at: {new Date(analysisData.web_search_evidence.search_timestamp).toLocaleString()}
+                    </div>
+                  )}
+                </div>
+              )}
+              
               <div
                 style={{
                   display: "grid",
@@ -497,13 +861,33 @@ export function ResultsPage() {
               {analysisData.cross_reference.related_articles.slice(0, 5).map((article: any, i: number) => (
                 <div key={i} style={{ border: `1px solid ${BORDER}`, borderRadius: 8, padding: "12px", marginBottom: 8 }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 4 }}>{article.title}</div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                     <span style={{ fontSize: 12, color: TEAL }}>{article.source_name}</span>
-                    {article.is_credible && (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: GREEN, backgroundColor: `${GREEN}15`, borderRadius: 4, padding: "2px 8px" }}>
-                        Credible
-                      </span>
-                    )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {article.is_credible && (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: GREEN, backgroundColor: `${GREEN}15`, borderRadius: 4, padding: "2px 8px" }}>
+                          Credible
+                        </span>
+                      )}
+                      {article.url && (
+                        <a
+                          href={article.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            fontSize: 12,
+                            color: TEAL,
+                            textDecoration: "none",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Read <ExternalLink size={12} />
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

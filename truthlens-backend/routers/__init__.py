@@ -1,1 +1,1 @@
-"""API routers for TruthLens."""
+"""API routers for Credence."""
