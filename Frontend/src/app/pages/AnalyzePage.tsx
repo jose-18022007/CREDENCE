@@ -13,7 +13,12 @@ import {
   Globe,
   Newspaper,
   Check,
+  AlertCircle,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
+import { analyzeText, analyzeURL, analyzeImage, analyzeVideo, analyzeAudio, type AnalysisResponse } from "../../services/api";
+import { useApiHealth } from "../../hooks/useApiHealth";
 
 const NAVY = "#1E3A5F";
 const TEAL = "#0D9488";
@@ -75,7 +80,7 @@ function ToggleChip({ label, enabled, onToggle }: { label: string; enabled: bool
   );
 }
 
-function ProcessingOverlay({ onComplete }: { onComplete: () => void }) {
+function ProcessingOverlay() {
   const [currentStep, setCurrentStep] = useState(0);
 
   useEffect(() => {
@@ -83,14 +88,13 @@ function ProcessingOverlay({ onComplete }: { onComplete: () => void }) {
       setCurrentStep((prev) => {
         if (prev >= STEPS.length - 1) {
           clearInterval(interval);
-          setTimeout(onComplete, 600);
           return prev;
         }
         return prev + 1;
       });
     }, 700);
     return () => clearInterval(interval);
-  }, [onComplete]);
+  }, []);
 
   return (
     <div
@@ -199,10 +203,12 @@ function ProcessingOverlay({ onComplete }: { onComplete: () => void }) {
 
 export function AnalyzePage() {
   const navigate = useNavigate();
+  const { isHealthy, isChecking } = useApiHealth();
   const [activeTab, setActiveTab] = useState("text");
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -212,8 +218,53 @@ export function AnalyzePage() {
   const [videoOptions, setVideoOptions] = useState({ deepfake: true, aiGen: true, frameByFrame: true, audio: true, lipsync: true });
   const [audioOptions, setAudioOptions] = useState({ aiVoice: true, cloning: true, spectrogram: true, splice: true, transcription: true });
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     setAnalyzing(true);
+    setError(null);
+
+    try {
+      let result: AnalysisResponse;
+
+      if (activeTab === "text") {
+        result = await analyzeText(text, {
+          check_bias: textOptions.bias,
+          check_fallacies: textOptions.fallacies,
+        });
+      } else if (activeTab === "url") {
+        result = await analyzeURL(url);
+      } else if (activeTab === "image" && uploadedFile) {
+        result = await analyzeImage(uploadedFile, {
+          check_ai_generated: imageOptions.ai,
+          check_exif: imageOptions.exif,
+          check_ela: imageOptions.ela,
+          reverse_search: imageOptions.reverse,
+        });
+      } else if (activeTab === "video" && uploadedFile) {
+        result = await analyzeVideo(uploadedFile, {
+          check_deepfake: videoOptions.deepfake,
+          check_ai_generated: videoOptions.aiGen,
+          extract_audio: videoOptions.audio,
+        });
+      } else if (activeTab === "audio" && uploadedFile) {
+        result = await analyzeAudio(uploadedFile, {
+          check_ai_voice: audioOptions.aiVoice,
+          transcribe: audioOptions.transcription,
+        });
+      } else {
+        throw new Error("No content to analyze");
+      }
+
+      // Store result in sessionStorage for ResultsPage
+      sessionStorage.setItem("latestAnalysis", JSON.stringify(result));
+      
+      // Navigate to results page
+      setTimeout(() => {
+        navigate("/results");
+      }, 600);
+    } catch (err: any) {
+      setError(err.message || "Analysis failed. Please try again.");
+      setAnalyzing(false);
+    }
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -230,7 +281,46 @@ export function AnalyzePage() {
 
   return (
     <div style={{ backgroundColor: "#FFFFFF", minHeight: "100vh", color: TEXT }}>
-      {analyzing && <ProcessingOverlay onComplete={() => navigate("/results")} />}
+      {analyzing && <ProcessingOverlay />}
+
+      {/* Error Message */}
+      {error && (
+        <div
+          style={{
+            position: "fixed",
+            top: 20,
+            right: 20,
+            backgroundColor: "#FEE2E2",
+            border: `2px solid ${RED}`,
+            borderRadius: 12,
+            padding: "16px 20px",
+            maxWidth: 400,
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "start",
+            gap: 12,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+          }}
+        >
+          <AlertCircle size={20} color={RED} style={{ flexShrink: 0, marginTop: 2 }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, color: RED, marginBottom: 4 }}>Analysis Failed</div>
+            <div style={{ fontSize: 14, color: "#991B1B" }}>{error}</div>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 4,
+              color: RED,
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Header */}
       <section style={{ padding: "56px 24px 40px", backgroundColor: BG_LIGHT, borderBottom: `1px solid ${BORDER}` }}>
@@ -241,6 +331,34 @@ export function AnalyzePage() {
           <p style={{ fontSize: 16, color: TEXT_MUTED }}>
             Upload any content type and get an instant integrity report
           </p>
+          
+          {/* API Status Indicator */}
+          {!isChecking && (
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                marginTop: 16,
+                padding: "8px 16px",
+                borderRadius: 20,
+                backgroundColor: isHealthy ? "#F0FDF4" : "#FEE2E2",
+                border: `1px solid ${isHealthy ? GREEN : RED}`,
+              }}
+            >
+              {isHealthy ? (
+                <>
+                  <Wifi size={14} color={GREEN} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: GREEN }}>Backend Connected</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff size={14} color={RED} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: RED }}>Backend Offline</span>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
@@ -347,17 +465,17 @@ export function AnalyzePage() {
               </div>
               <button
                 onClick={handleAnalyze}
-                disabled={!text.trim()}
+                disabled={!text.trim() || !isHealthy}
                 style={{
                   width: "100%",
                   padding: "14px",
-                  backgroundColor: text.trim() ? NAVY : "#CBD5E1",
+                  backgroundColor: (text.trim() && isHealthy) ? NAVY : "#CBD5E1",
                   color: "#FFFFFF",
                   border: "none",
                   borderRadius: 8,
                   fontSize: 15,
                   fontWeight: 600,
-                  cursor: text.trim() ? "pointer" : "not-allowed",
+                  cursor: (text.trim() && isHealthy) ? "pointer" : "not-allowed",
                   transition: "background-color 0.15s",
                 }}
               >
@@ -430,17 +548,17 @@ export function AnalyzePage() {
 
               <button
                 onClick={handleAnalyze}
-                disabled={!url.trim()}
+                disabled={!url.trim() || !isHealthy}
                 style={{
                   width: "100%",
                   padding: "14px",
-                  backgroundColor: url.trim() ? NAVY : "#CBD5E1",
+                  backgroundColor: (url.trim() && isHealthy) ? NAVY : "#CBD5E1",
                   color: "#FFFFFF",
                   border: "none",
                   borderRadius: 8,
                   fontSize: 15,
                   fontWeight: 600,
-                  cursor: url.trim() ? "pointer" : "not-allowed",
+                  cursor: (url.trim() && isHealthy) ? "pointer" : "not-allowed",
                   marginBottom: 12,
                   transition: "background-color 0.15s",
                 }}
@@ -512,16 +630,17 @@ export function AnalyzePage() {
 
               <button
                 onClick={handleAnalyze}
+                disabled={!uploadedFile || !isHealthy}
                 style={{
                   width: "100%",
                   padding: "14px",
-                  backgroundColor: NAVY,
+                  backgroundColor: (uploadedFile && isHealthy) ? NAVY : "#CBD5E1",
                   color: "#FFFFFF",
                   border: "none",
                   borderRadius: 8,
                   fontSize: 15,
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: (uploadedFile && isHealthy) ? "pointer" : "not-allowed",
                 }}
               >
                 Analyze Image
@@ -583,7 +702,18 @@ export function AnalyzePage() {
 
               <button
                 onClick={handleAnalyze}
-                style={{ width: "100%", padding: "14px", backgroundColor: NAVY, color: "#FFFFFF", border: "none", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
+                disabled={!uploadedFile || !isHealthy}
+                style={{ 
+                  width: "100%", 
+                  padding: "14px", 
+                  backgroundColor: (uploadedFile && isHealthy) ? NAVY : "#CBD5E1", 
+                  color: "#FFFFFF", 
+                  border: "none", 
+                  borderRadius: 8, 
+                  fontSize: 15, 
+                  fontWeight: 600, 
+                  cursor: (uploadedFile && isHealthy) ? "pointer" : "not-allowed" 
+                }}
               >
                 Analyze Video
               </button>
@@ -661,7 +791,18 @@ export function AnalyzePage() {
 
               <button
                 onClick={handleAnalyze}
-                style={{ width: "100%", padding: "14px", backgroundColor: NAVY, color: "#FFFFFF", border: "none", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
+                disabled={!uploadedFile || !isHealthy}
+                style={{ 
+                  width: "100%", 
+                  padding: "14px", 
+                  backgroundColor: (uploadedFile && isHealthy) ? NAVY : "#CBD5E1", 
+                  color: "#FFFFFF", 
+                  border: "none", 
+                  borderRadius: 8, 
+                  fontSize: 15, 
+                  fontWeight: 600, 
+                  cursor: (uploadedFile && isHealthy) ? "pointer" : "not-allowed" 
+                }}
               >
                 Analyze Audio
               </button>

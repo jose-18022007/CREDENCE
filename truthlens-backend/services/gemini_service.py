@@ -1,14 +1,16 @@
 """Google Gemini API integration for content analysis."""
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from typing import Dict, Any, Optional
 import json
 import re
 import asyncio
 from config import settings
 
-# Configure Gemini
+# Configure Gemini client
+client = None
 if settings.GEMINI_API_KEY:
-    genai.configure(api_key=settings.GEMINI_API_KEY)
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
 class GeminiService:
@@ -16,7 +18,7 @@ class GeminiService:
     
     def __init__(self):
         """Initialize Gemini service."""
-        self.model_name = "gemini-2.0-flash-exp"
+        self.model_name = "models/gemini-flash-latest"  # Latest flash model with better quota
         self.max_retries = 3
         self.base_delay = 1.0
         
@@ -36,7 +38,7 @@ class GeminiService:
         Returns:
             Dictionary containing structured analysis results
         """
-        if not settings.GEMINI_API_KEY:
+        if not settings.GEMINI_API_KEY or not client:
             return self._get_fallback_response("Gemini API key not configured")
         
         prompt = self._build_analysis_prompt(text, check_bias, check_fallacies)
@@ -44,8 +46,10 @@ class GeminiService:
         # Retry logic with exponential backoff
         for attempt in range(self.max_retries):
             try:
-                model = genai.GenerativeModel(self.model_name)
-                response = model.generate_content(prompt)
+                response = client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt
+                )
                 
                 if not response or not response.text:
                     raise ValueError("Empty response from Gemini")
@@ -64,12 +68,17 @@ class GeminiService:
                 return self._get_fallback_response("Failed to parse Gemini response")
                 
             except Exception as e:
-                print(f"Gemini API error (attempt {attempt + 1}/{self.max_retries}): {e}")
+                error_msg = str(e)
+                print(f"Gemini API error (attempt {attempt + 1}/{self.max_retries}): {error_msg}")
+                
+                # Check for specific API key errors
+                if "403" in error_msg or "API key" in error_msg or "leaked" in error_msg.lower():
+                    return self._get_fallback_response(f"Gemini API error: {error_msg}")
                 
                 if attempt < self.max_retries - 1:
                     await asyncio.sleep(self.base_delay * (2 ** attempt))
                 else:
-                    return self._get_fallback_response(f"Gemini API error: {str(e)}")
+                    return self._get_fallback_response(f"Gemini API error: {error_msg}")
         
         return self._get_fallback_response("Max retries exceeded")
     
@@ -285,7 +294,7 @@ async def analyze_image_with_gemini(image_path: str) -> Dict[str, Any]:
     Returns:
         Dictionary containing image analysis results
     """
-    if not settings.GEMINI_API_KEY:
+    if not settings.GEMINI_API_KEY or not client:
         return {"error": "Gemini API key not configured"}
     
     try:
