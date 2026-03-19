@@ -1,4 +1,5 @@
 """Text analysis endpoint."""
+import re
 from fastapi import APIRouter, HTTPException
 from models.schemas import TextAnalysisRequest, AnalysisResponse
 from services.gemini_service import GeminiService
@@ -15,6 +16,47 @@ from models.schemas import (
 router = APIRouter()
 
 
+def validate_text_input(text: str) -> str | None:
+    """Validate text input for analysis.
+    
+    Args:
+        text: Input text to validate
+        
+    Returns:
+        Error message if invalid, None if valid
+    """
+    cleaned = text.strip()
+    
+    # Check minimum length (already in schema, but double-check)
+    if len(cleaned) < 10:
+        return "Text must be at least 10 characters long"
+    
+    # Check if only numbers
+    if re.match(r'^\d+$', cleaned):
+        return "Invalid input: Text cannot contain only numbers"
+    
+    # Check if contains at least some letters
+    if not re.search(r'[a-zA-Z]', text):
+        return "Invalid input: Text must contain at least some letters"
+    
+    # Check if mostly special characters (less than 20% alphanumeric)
+    alphanumeric = re.findall(r'[a-zA-Z0-9]', text)
+    total_chars = len(re.sub(r'\s', '', text))
+    if total_chars > 0 and len(alphanumeric) / total_chars < 0.2:
+        return "Invalid input: Text contains too many special characters"
+    
+    # Check if only repeated characters
+    if re.match(r'^(.)\1+$', cleaned):
+        return "Invalid input: Text cannot be only repeated characters"
+    
+    # Check if meaningful words exist (at least 3 words with 2+ letters)
+    words = [w for w in cleaned.split() if re.search(r'[a-zA-Z]{2,}', w)]
+    if len(words) < 3:
+        return "Invalid input: Text must contain at least 3 meaningful words"
+    
+    return None  # Valid input
+
+
 @router.post("/text", response_model=AnalysisResponse)
 async def analyze_text(request: TextAnalysisRequest):
     """Analyze text content for credibility and misinformation.
@@ -26,6 +68,11 @@ async def analyze_text(request: TextAnalysisRequest):
         Complete analysis response
     """
     try:
+        # Validate input text
+        validation_error = validate_text_input(request.text)
+        if validation_error:
+            raise HTTPException(status_code=400, detail=validation_error)
+        
         # Generate analysis ID
         analysis_id = generate_uuid()
         
@@ -72,6 +119,39 @@ async def analyze_text(request: TextAnalysisRequest):
             # Use first claim or first 100 chars of text
             query = claim_texts[0] if claim_texts else request.text[:100]
             news_cross_ref = await news_service.cross_reference_claim(query)
+            
+            # FALLBACK: If NewsAPI/GNews returned no articles, use web search results
+            if not news_cross_ref.get("all_articles") or len(news_cross_ref.get("all_articles", [])) == 0:
+                print("NewsAPI/GNews returned no articles, using web search results as fallback...")
+                # Convert web search results to article format
+                web_articles = []
+                for result in web_context.get("news_results", [])[:6]:
+                    web_articles.append({
+                        "title": result.get("title", ""),
+                        "source_name": result.get("source", ""),
+                        "url": result.get("url", ""),
+                        "description": result.get("snippet", ""),
+                        "published_at": result.get("date", ""),
+                        "domain": result.get("source", ""),
+                        "is_credible": True,  # Assume credible for now
+                        "trust_score": 70
+                    })
+                # Add general web results if we need more
+                for result in web_context.get("web_results", [])[:4]:
+                    web_articles.append({
+                        "title": result.get("title", ""),
+                        "source_name": result.get("source", ""),
+                        "url": result.get("url", ""),
+                        "description": result.get("snippet", ""),
+                        "published_at": "",
+                        "domain": result.get("source", ""),
+                        "is_credible": True,
+                        "trust_score": 65
+                    })
+                news_cross_ref["all_articles"] = web_articles
+                news_cross_ref["credible_sources_count"] = len(web_articles)
+                news_cross_ref["total_sources_count"] = len(web_articles)
+                print(f"Using {len(web_articles)} web search results as related articles")
         except Exception as e:
             print(f"News service error (continuing without it): {e}")
             news_cross_ref = {

@@ -1,5 +1,6 @@
 import { Outlet } from "react-router";
 import { Navbar } from "../components/Navbar";
+import { Chatbot } from "../components/Chatbot";
 
 export function Root() {
   return (
@@ -8,6 +9,7 @@ export function Root() {
       <main>
         <Outlet />
       </main>
+      <Chatbot />
     </div>
   );
 }

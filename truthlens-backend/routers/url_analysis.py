@@ -32,12 +32,14 @@ async def analyze_url(request: URLAnalysisRequest):
         url_str = str(request.url)
         
         # Initialize services
+        from services.web_search_service import WebSearchService
         scraper_service = ScraperService()
         domain_service = DomainService()
         gemini_service = GeminiService()
         factcheck_service = FactCheckService()
         news_service = NewsService()
         scoring_service = ScoringService()
+        web_search_service = WebSearchService()
         
         # Step 1: Scrape article content
         scraped = await scraper_service.scrape_article(url_str)
@@ -121,6 +123,42 @@ async def analyze_url(request: URLAnalysisRequest):
         news_cross_ref = {}
         try:
             news_cross_ref = await news_service.cross_reference_claim(title or claim_texts[0] if claim_texts else content[:100])
+            
+            # FALLBACK: If NewsAPI/GNews returned no articles, use web search
+            if not news_cross_ref.get("all_articles") or len(news_cross_ref.get("all_articles", [])) == 0:
+                print("NewsAPI/GNews returned no articles, performing web search fallback...")
+                # Perform web search for related articles
+                search_query = title or (claim_texts[0] if claim_texts else content[:100])
+                web_context = await web_search_service.search_and_compile_context(search_query)
+                
+                # Convert web search results to article format
+                web_articles = []
+                for result in web_context.get("news_results", [])[:6]:
+                    web_articles.append({
+                        "title": result.get("title", ""),
+                        "source_name": result.get("source", ""),
+                        "url": result.get("url", ""),
+                        "description": result.get("snippet", ""),
+                        "published_at": result.get("date", ""),
+                        "domain": result.get("source", ""),
+                        "is_credible": True,
+                        "trust_score": 70
+                    })
+                for result in web_context.get("web_results", [])[:4]:
+                    web_articles.append({
+                        "title": result.get("title", ""),
+                        "source_name": result.get("source", ""),
+                        "url": result.get("url", ""),
+                        "description": result.get("snippet", ""),
+                        "published_at": "",
+                        "domain": result.get("source", ""),
+                        "is_credible": True,
+                        "trust_score": 65
+                    })
+                news_cross_ref["all_articles"] = web_articles
+                news_cross_ref["credible_sources_count"] = len(web_articles)
+                news_cross_ref["total_sources_count"] = len(web_articles)
+                print(f"Using {len(web_articles)} web search results as related articles")
         except Exception as e:
             print(f"News service error (continuing): {e}")
             news_cross_ref = {

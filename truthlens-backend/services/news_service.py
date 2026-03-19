@@ -167,6 +167,43 @@ class NewsService:
         # Combine results
         all_articles = newsapi_results + gnews_results
         
+        # FALLBACK: If no articles from NewsAPI/GNews, use DuckDuckGo web search
+        if len(all_articles) == 0:
+            print("No articles from NewsAPI/GNews, using DuckDuckGo fallback...")
+            from services.web_search_service import WebSearchService
+            web_search = WebSearchService()
+            
+            # Search for news articles
+            news_results = await web_search.search_news(claim_text, max_results=6)
+            web_results = await web_search.search_web(claim_text, max_results=4)
+            
+            # Convert to article format
+            for result in news_results:
+                all_articles.append({
+                    "title": result.get("title", ""),
+                    "source_name": result.get("source", ""),
+                    "url": result.get("url", ""),
+                    "description": result.get("snippet", ""),
+                    "published_at": result.get("date", ""),
+                    "domain": result.get("source", ""),
+                    "is_credible": True,
+                    "trust_score": 70
+                })
+            
+            for result in web_results:
+                all_articles.append({
+                    "title": result.get("title", ""),
+                    "source_name": result.get("source", ""),
+                    "url": result.get("url", ""),
+                    "description": result.get("snippet", ""),
+                    "published_at": "",
+                    "domain": result.get("source", ""),
+                    "is_credible": True,
+                    "trust_score": 65
+                })
+            
+            print(f"DuckDuckGo fallback found {len(all_articles)} articles")
+        
         # Count credible vs total
         credible_sources = [a for a in all_articles if a.get("is_credible", False)]
         total_sources = len(all_articles)

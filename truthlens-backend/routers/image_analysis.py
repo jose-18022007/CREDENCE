@@ -84,6 +84,7 @@ async def analyze_image_file(
         gemini_result = {}
         factcheck_results = {}
         news_cross_ref = {}
+        web_context = {}
         
         if ocr_extraction:
             ocr_result = ocr_service.extract_text_from_image(str(file_path))
@@ -93,9 +94,20 @@ async def analyze_image_file(
                 extracted_text = ocr_result["text"]
                 print(f"[2/5] Analyzing extracted text ({ocr_result['word_count']} words)...")
                 
-                # Analyze with Gemini
+                # IMPORTANT: Perform web search for context (same as text analysis)
+                from services.web_search_service import WebSearchService
+                web_search_service = WebSearchService()
+                web_context = await web_search_service.search_and_compile_context(extracted_text)
+                print(f"Web search found {web_context.get('total_results_found', 0)} results for image text")
+                
+                # Analyze with Gemini (WITH web context)
                 try:
-                    gemini_result = await gemini_service.analyze_text_content(extracted_text)
+                    gemini_result = await gemini_service.analyze_text_content(
+                        extracted_text,
+                        check_bias=True,
+                        check_fallacies=True,
+                        web_context=web_context  # Pass web context like text analysis does
+                    )
                     
                     # Extract claims
                     claims = gemini_result.get("CLAIM_VERIFICATION", [])
@@ -189,34 +201,125 @@ async def analyze_image_file(
         
         # Calculate trust score
         print(f"[5/5] Calculating trust score...")
-        analysis_data = {
-            "gemini_result": gemini_result,
-            "factcheck_results": factcheck_results,
-            "source_credibility": {"score": source_credibility.score},
-            "media_integrity": {
-                "ai_generated_probability": ai_detection_data.get("ai_generated_probability", 0) / 100,
-                "deepfake_probability": 0
-            },
-            "cross_reference": {
-                "credible_sources_count": cross_reference.credible_sources_count,
-                "unreliable_sources_count": cross_reference.unreliable_sources_count
+        
+        # SEPARATE SCORING: Image authenticity vs Text content credibility
+        has_text_content = gemini_result and ocr_result.get("has_text") and ocr_result.get("word_count", 0) > 5
+        
+        if has_text_content:
+            # TWO-PART ANALYSIS: Image + Text
+            # Part 1: Image authenticity score (0-100)
+            ai_prob = ai_detection_data.get("ai_generated_probability", 0)
+            image_authenticity_score = 100 - ai_prob  # Invert: 0% AI = 100 authentic, 100% AI = 0 authentic
+            
+            # Adjust for EXIF and ELA (only affects IMAGE score, not text)
+            if "METADATA_STRIPPED" in exif_data_result.get("suspicious_flags", []):
+                image_authenticity_score = max(0, image_authenticity_score - 15)
+            if ela_result.get("manipulation_detected"):
+                image_authenticity_score = max(0, image_authenticity_score - 20)
+            
+            print(f"Image authenticity score: {image_authenticity_score}/100")
+            print(f"AI probability: {ai_prob}%")
+            
+            # Part 2: Text content credibility score (from Gemini + fact-checks)
+            text_analysis_data = {
+                "gemini_result": gemini_result,
+                "factcheck_results": factcheck_results,
+                "web_search_context": web_context,  # Add web context for proper scoring
+                "source_credibility": {"score": 70},  # Neutral for image text
+                "cross_reference": {
+                    "credible_sources_count": cross_reference.credible_sources_count,
+                    "unreliable_sources_count": cross_reference.unreliable_sources_count
+                }
             }
-        }
-        
-        trust_score = await scoring_service.calculate_trust_score(
-            analysis_data,
-            has_source=False,
-            has_media=True
-        )
-        
-        verdict = scoring_service.get_verdict(trust_score)
+            
+            text_credibility_score = await scoring_service.calculate_trust_score(
+                text_analysis_data,
+                has_source=False,
+                has_media=False  # Don't include media in text scoring
+            )
+            
+            print(f"Text credibility score: {text_credibility_score}/100")
+            print(f"Web search results: {web_context.get('total_results_found', 0)}")
+            
+            # FINAL SCORE: Use text score as primary, image as modifier
+            # If text is credible (60+), image issues should only slightly reduce score
+            if text_credibility_score >= 60:
+                # Text is credible - image issues are secondary
+                trust_score = int(text_credibility_score * 0.85 + image_authenticity_score * 0.15)
+                print(f"Text is credible - using 85/15 weighting: {trust_score}")
+            elif text_credibility_score >= 40:
+                # Text is suspicious - balance both
+                trust_score = int(text_credibility_score * 0.6 + image_authenticity_score * 0.4)
+                print(f"Text is suspicious - using 60/40 weighting: {trust_score}")
+            else:
+                # Text is not credible - image doesn't matter much
+                trust_score = int(text_credibility_score * 0.8 + image_authenticity_score * 0.2)
+                print(f"Text is not credible - using 80/20 weighting: {trust_score}")
+            
+            # IMPORTANT: If text is credible (60+), don't let image issues drag it below SUSPICIOUS
+            if text_credibility_score >= 60 and trust_score < 55:
+                trust_score = 55  # Minimum SUSPICIOUS, not FAKE
+                print(f"Adjusted to minimum 55 (text is credible)")
+            
+            # Build nuanced verdict
+            if ai_prob > 70:
+                if text_credibility_score >= 70:
+                    verdict = "AI_GENERATED_IMAGE_TRUE_CONTENT"
+                    summary = f"Image is AI-generated ({ai_prob:.0f}% confidence), but the text content appears credible (score: {text_credibility_score}/100). The news may be real, but presented with synthetic imagery."
+                elif text_credibility_score >= 40:
+                    verdict = "AI_GENERATED_IMAGE_MIXED_CONTENT"
+                    summary = f"Image is AI-generated ({ai_prob:.0f}% confidence) with questionable text content (score: {text_credibility_score}/100). Verify claims independently."
+                else:
+                    verdict = "AI_GENERATED_IMAGE_FALSE_CONTENT"
+                    summary = f"Image is AI-generated ({ai_prob:.0f}% confidence) with misleading text content (score: {text_credibility_score}/100). Likely fabricated news."
+            else:
+                # Real image - use text credibility for verdict
+                verdict = scoring_service.get_verdict(text_credibility_score)
+                if text_credibility_score >= 70:
+                    summary = f"Image appears authentic. Text content is credible (score: {text_credibility_score}/100). {gemini_result.get('OVERALL_ASSESSMENT', {}).get('summary', '')[:150]}"
+                elif text_credibility_score >= 40:
+                    summary = f"Image appears authentic. Text content is questionable (score: {text_credibility_score}/100). {gemini_result.get('OVERALL_ASSESSMENT', {}).get('summary', '')[:150]}"
+                else:
+                    summary = f"Image appears authentic, but text content is not credible (score: {text_credibility_score}/100). {gemini_result.get('OVERALL_ASSESSMENT', {}).get('summary', '')[:150]}"
+        else:
+            # NO TEXT CONTENT - Image-only analysis
+            analysis_data = {
+                "gemini_result": {},
+                "factcheck_results": {},
+                "source_credibility": {"score": 70},
+                "media_integrity": {
+                    "ai_generated_probability": ai_detection_data.get("ai_generated_probability", 0) / 100,
+                    "deepfake_probability": 0
+                },
+                "cross_reference": {
+                    "credible_sources_count": 0,
+                    "unreliable_sources_count": 0
+                }
+            }
+            
+            trust_score = await scoring_service.calculate_trust_score(
+                analysis_data,
+                has_source=False,
+                has_media=True
+            )
+            
+            verdict = scoring_service.get_verdict(trust_score)
+            
+            # Build summary
+            if ai_detection_data.get("ai_generated_probability", 0) > 70:
+                summary = f"Image is likely AI-generated ({ai_detection_data['ai_generated_probability']:.0f}% confidence). No text content found for fact-checking."
+            else:
+                summary = f"Image appears authentic. No text content found for fact-checking."
         
         # Collect red flags
         red_flags = []
         
-        # From image analysis
+        # From image analysis - be nuanced about AI generation
         if ai_detection_data.get("ai_generated_probability", 0) > 70:
-            red_flags.append(f"High probability of AI-generated content ({ai_detection_data['ai_generated_probability']:.0f}%)")
+            if has_text_content and text_credibility_score >= 70:
+                red_flags.append(f"Image is AI-generated ({ai_detection_data['ai_generated_probability']:.0f}%), but text content is credible - verify with original sources")
+            else:
+                red_flags.append(f"High probability of AI-generated content ({ai_detection_data['ai_generated_probability']:.0f}%)")
         
         if "METADATA_STRIPPED" in exif_data_result.get("suspicious_flags", []):
             red_flags.append("Image metadata completely stripped")
@@ -236,17 +339,18 @@ async def analyze_image_file(
         if factcheck_results.get("false_count", 0) > 0:
             red_flags.append(f"{factcheck_results['false_count']} claim(s) rated FALSE by fact-checkers")
         
-        # Build summary
-        summary_parts = []
-        summary_parts.append(f"Image analysis: {image_analysis.get('overall_verdict', 'ANALYZED')}")
-        
-        if ocr_result.get("has_text"):
-            summary_parts.append(f"Extracted {ocr_result['word_count']} words from image")
-        
-        if ai_detection_data.get("ai_generated_probability", 0) > 50:
-            summary_parts.append(f"AI-generated probability: {ai_detection_data['ai_generated_probability']:.0f}%")
-        
-        summary = ". ".join(summary_parts)
+        # Build web search evidence (if text was analyzed)
+        web_search_evidence = None
+        if web_context and web_context.get("total_results_found", 0) > 0:
+            from models.schemas import WebSearchEvidence
+            recency = gemini_result.get("RECENCY_ASSESSMENT", {}) if gemini_result else {}
+            web_search_evidence = WebSearchEvidence(
+                search_performed=True,
+                total_results_found=web_context.get("total_results_found", 0),
+                news_results_count=len(web_context.get("news_results", [])),
+                search_timestamp=web_context.get("search_timestamp"),
+                coverage_level=recency.get("coverage_level", "UNKNOWN")
+            )
         
         # Build response
         response = AnalysisResponse(
@@ -259,6 +363,7 @@ async def analyze_image_file(
             language_analysis=language_analysis,
             media_integrity=media_integrity,
             cross_reference=cross_reference,
+            web_search_evidence=web_search_evidence,
             red_flags=list(set(red_flags))
         )
         

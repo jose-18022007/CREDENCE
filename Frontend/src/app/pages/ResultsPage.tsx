@@ -1,944 +1,694 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import {
   Shield,
   Search,
-  FileText,
   Globe,
   Image,
-  ChevronDown,
-  ChevronUp,
-  Share2,
-  Download,
   RefreshCw,
   ExternalLink,
   AlertTriangle,
   CheckCircle,
   XCircle,
-  HelpCircle,
   ThumbsUp,
   ThumbsDown,
-  Flag,
   ArrowLeft,
+  Scan,
+  Eye,
+  Layers,
+  BookOpen,
+  MessageSquare,
+  Lightbulb,
+  Link2,
+  FileWarning,
+  ShieldCheck,
+  ShieldX,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Quote,
+  FileText,
+  Copy,
+  Check,
+  HelpCircle,
+  ShieldAlert,
 } from "lucide-react";
 import type { AnalysisResponse } from "../../services/api";
 
-const NAVY = "#1E3A5F";
-const TEAL = "#0D9488";
-const RED = "#DC2626";
-const AMBER = "#D97706";
-const GREEN = "#059669";
-const BORDER = "#E2E8F0";
-const BG_LIGHT = "#F8FAFC";
-const TEXT = "#1E293B";
-const TEXT_MUTED = "#64748B";
+/* ============================== */
+/* ===== HELPERS ===== */
+/* ============================== */
 
-function TrustGauge({ score }: { score: number }) {
-  const color = score <= 30 ? RED : score <= 60 ? AMBER : score <= 80 ? "#16A34A" : GREEN;
-  const r = 70;
-  const circumference = Math.PI * r;
-  const strokeDash = (score / 100) * circumference;
-
-  return (
-    <div style={{ position: "relative", display: "inline-block" }}>
-      <svg width="180" height="100" viewBox="0 0 180 100">
-        <path
-          d={`M 20 90 A ${r} ${r} 0 0 1 160 90`}
-          fill="none"
-          stroke="#F1F5F9"
-          strokeWidth="14"
-          strokeLinecap="round"
-        />
-        <path
-          d={`M 20 90 A ${r} ${r} 0 0 1 160 90`}
-          fill="none"
-          stroke={color}
-          strokeWidth="14"
-          strokeLinecap="round"
-          strokeDasharray={`${strokeDash} ${circumference}`}
-        />
-        <text x="90" y="74" textAnchor="middle" fill={NAVY} fontSize="30" fontWeight="800">{score}</text>
-        <text x="90" y="90" textAnchor="middle" fill={TEXT_MUTED} fontSize="12">/ 100</text>
-      </svg>
-      <div style={{ textAlign: "center", marginTop: -8 }}>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            color,
-            textTransform: "uppercase",
-            letterSpacing: "0.5px",
-          }}
-        >
-          {score <= 30 ? "Likely Fake" : score <= 60 ? "Suspicious" : score <= 80 ? "Mostly Credible" : "Verified"}
-        </span>
-      </div>
-    </div>
-  );
+// OVERALL page verdict — binary: Real or Fake (for the big hero)
+function getVerdictTheme(verdict: string) {
+  const v = verdict.toUpperCase();
+  
+  // Special handling for AI-generated image verdicts
+  if (v.includes("AI_GENERATED_IMAGE_TRUE_CONTENT")) {
+    return {
+      color: "#F59E0B",
+      bg: "rgba(245,158,11,0.04)",
+      border: "rgba(245,158,11,0.12)",
+      icon: <ShieldAlert size={28} />,
+      label: "AI-generated image, but text content is credible",
+      isFake: false,
+    };
+  }
+  
+  if (v.includes("AI_GENERATED_IMAGE_MIXED_CONTENT")) {
+    return {
+      color: "#F59E0B",
+      bg: "rgba(245,158,11,0.04)",
+      border: "rgba(245,158,11,0.12)",
+      icon: <ShieldAlert size={28} />,
+      label: "AI-generated image with questionable content",
+      isFake: true,
+    };
+  }
+  
+  if (v.includes("AI_GENERATED_IMAGE_FALSE_CONTENT")) {
+    return {
+      color: "#EF4444",
+      bg: "rgba(239,68,68,0.04)",
+      border: "rgba(239,68,68,0.12)",
+      icon: <ShieldX size={28} />,
+      label: "AI-generated image with false content",
+      isFake: true,
+    };
+  }
+  
+  if (v.includes("TRUE") || v.includes("VERIFIED") || v.includes("CREDIBLE"))
+    return {
+      color: "#10B981",
+      bg: "rgba(16,185,129,0.04)",
+      border: "rgba(16,185,129,0.12)",
+      icon: <ShieldCheck size={28} />,
+      label: "This news is real and verified",
+      isFake: false,
+    };
+  return {
+    color: "#EF4444",
+    bg: "rgba(239,68,68,0.04)",
+    border: "rgba(239,68,68,0.12)",
+    icon: <ShieldX size={28} />,
+    label: "This news is fake",
+    isFake: true,
+  };
 }
 
-function CollapsibleCard({
-  icon,
-  title,
-  badge,
-  badgeColor,
-  children,
-  defaultOpen = false,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  badge?: string;
-  badgeColor?: string;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
+// INDIVIDUAL CLAIM — show the raw API verdict with appropriate color
+// No mapping to Real/Fake — show exactly what API returns
+function getClaimTheme(verdict: string) {
+  const v = (verdict || "UNVERIFIED").toUpperCase();
+
+  // TRUE / VERIFIED / CONFIRMED → green
+  if (v.includes("TRUE") || v === "VERIFIED" || v.includes("CONFIRMED") || v.includes("ACCURATE"))
+    return { color: "#10B981", icon: <CheckCircle size={15} />, bg: "rgba(16,185,129,0.04)" };
+
+  // FALSE / FAKE / FABRICATED → red
+  if (v.includes("FALSE") || v.includes("FAKE") || v.includes("FABRICAT") || v.includes("DEBUNKED"))
+    return { color: "#EF4444", icon: <XCircle size={15} />, bg: "rgba(239,68,68,0.04)" };
+
+  // MISLEADING / PARTIALLY → amber
+  if (v.includes("MISLEAD") || v.includes("PARTIAL") || v.includes("HALF") || v.includes("MIXED"))
+    return { color: "#F59E0B", icon: <AlertTriangle size={15} />, bg: "rgba(245,158,11,0.04)" };
+
+  // SUSPICIOUS → amber-red
+  if (v.includes("SUSPICIOUS") || v.includes("SUSPECT") || v.includes("DOUBT"))
+    return { color: "#F59E0B", icon: <ShieldAlert size={15} />, bg: "rgba(245,158,11,0.04)" };
+
+  // UNVERIFIED / NEEDS CONTEXT / UNKNOWN / anything else → gray-blue
+  return { color: "#6366F1", icon: <HelpCircle size={15} />, bg: "rgba(99,102,241,0.04)" };
+}
+
+// Clean the verdict text for display
+function formatVerdict(verdict: string): string {
+  return (verdict || "UNVERIFIED").replace(/_/g, " ").toUpperCase();
+}
+
+/* ============================== */
+/* ===== INPUT PREVIEW ===== */
+/* ============================== */
+function InputPreview({ data }: { data: AnalysisResponse }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const inputType = data.analysis_type || "text";
+  const inputContent = data.input_text || data.input_url || data.input_preview || "";
+
+  if (!inputContent) return null;
+
+  const isLong = inputContent.length > 300;
+  const displayText = expanded ? inputContent : inputContent.slice(0, 300);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(inputContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* */ }
+  };
+
   return (
-    <div
-      style={{
-        backgroundColor: "#FFFFFF",
-        border: `1px solid ${BORDER}`,
-        borderRadius: 12,
-        overflow: "hidden",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-        marginBottom: 16,
-      }}
-    >
-      <button
-        onClick={() => setOpen(!open)}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: "20px 24px",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          textAlign: "left",
-          borderBottom: open ? `1px solid ${BORDER}` : "none",
-        }}
-      >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            backgroundColor: "#F1F5F9",
-            borderRadius: 8,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          {icon}
+    <div style={{ animation: "fadeInUp 0.6s cubic-bezier(0.23,1,0.32,1) 0.68s both" }}>
+      <div className="glass-panel" style={{ padding: "28px 34px", marginBottom: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(13,148,136,0.06)", border: "1px solid rgba(13,148,136,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {inputType === "url" ? <Globe size={16} color="#0D9488" /> : inputType === "image" ? <Image size={16} color="#0D9488" /> : <FileText size={16} color="#0D9488" />}
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#0F172A", letterSpacing: "-0.2px" }}>
+                {inputType === "url" ? "Analyzed URL" : inputType === "image" ? "Analyzed Image" : "Analyzed Text"}
+              </div>
+              {inputType !== "url" && (
+                <div style={{ fontSize: 12, color: "#94A3B8" }}>{inputContent.length} characters</div>
+              )}
+            </div>
+          </div>
+          <button onClick={handleCopy} className="copy-btn" style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 10, border: "1px solid rgba(226,232,240,0.4)", background: copied ? "rgba(16,185,129,0.06)" : "rgba(241,245,249,0.5)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", cursor: "pointer", fontSize: 12, fontWeight: 600, color: copied ? "#10B981" : "#64748B", transition: "all 0.3s ease" }}>
+            {copied ? <Check size={13} /> : <Copy size={13} />}
+            {copied ? "Copied!" : "Copy"}
+          </button>
         </div>
-        <span style={{ fontWeight: 700, color: NAVY, fontSize: 15, flex: 1 }}>{title}</span>
-        {badge && (
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: badgeColor || TEXT_MUTED,
-              backgroundColor: `${badgeColor || TEXT_MUTED}18`,
-              borderRadius: 20,
-              padding: "3px 10px",
-            }}
-          >
-            {badge}
-          </span>
+
+        <div style={{ background: "rgba(241,245,249,0.4)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", border: "1px solid rgba(226,232,240,0.35)", borderRadius: 14, padding: "18px 20px" }}>
+          {inputType === "url" ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <Globe size={16} color="#0D9488" style={{ flexShrink: 0 }} />
+              <a href={inputContent} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: "#0D9488", textDecoration: "none", fontWeight: 500, wordBreak: "break-all", lineHeight: 1.5 }}>
+                {inputContent}
+              </a>
+              <ExternalLink size={13} color="#94A3B8" style={{ flexShrink: 0 }} />
+            </div>
+          ) : (
+            <>
+              <p style={{ fontSize: 14, color: "#334155", lineHeight: 1.8, margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                {displayText}
+                {isLong && !expanded && <span style={{ color: "#94A3B8" }}>...</span>}
+              </p>
+              {isLong && (
+                <button onClick={() => setExpanded(!expanded)} style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 14, padding: "6px 14px", borderRadius: 8, border: "1px solid rgba(13,148,136,0.1)", background: "rgba(13,148,136,0.04)", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#0D9488", transition: "all 0.25s ease" }}>
+                  {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                  {expanded ? "Show less" : "Show full text"}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Source info for URLs */}
+        {inputType === "url" && data.source_credibility?.domain && (
+          <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: "rgba(241,245,249,0.35)", borderRadius: 12, border: "1px solid rgba(226,232,240,0.3)" }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(13,148,136,0.06)", border: "1px solid rgba(13,148,136,0.06)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Globe size={15} color="#0D9488" />
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#0F172A" }}>{data.source_credibility.domain}</div>
+              <div style={{ fontSize: 12, color: "#94A3B8" }}>
+                {data.source_credibility.domain_age && `Domain age: ${data.source_credibility.domain_age}`}
+              </div>
+            </div>
+          </div>
         )}
-        {open ? <ChevronUp size={16} color={TEXT_MUTED} /> : <ChevronDown size={16} color={TEXT_MUTED} />}
-      </button>
-      {open && <div style={{ padding: "24px" }}>{children}</div>}
-    </div>
-  );
-}
-
-function ProgressBar({ value, color, label, percent }: { value: number; color: string; label?: string; percent?: boolean }) {
-  return (
-    <div style={{ marginBottom: 12 }}>
-      {label && (
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-          <span style={{ fontSize: 13, color: TEXT }}>{label}</span>
-          <span style={{ fontSize: 13, fontWeight: 600, color }}>{value}{percent ? "%" : ""}</span>
-        </div>
-      )}
-      <div style={{ height: 8, backgroundColor: "#F1F5F9", borderRadius: 4, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${value}%`, backgroundColor: color, borderRadius: 4, transition: "width 0.5s" }} />
       </div>
     </div>
   );
 }
 
+/* ============================== */
+/* ===== RESULTS PAGE ===== */
+/* ============================== */
 export function ResultsPage() {
   const navigate = useNavigate();
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
 
   useEffect(() => {
-    // Load analysis data from sessionStorage
     const stored = sessionStorage.getItem("latestAnalysis");
     if (stored) {
-      try {
-        const data = JSON.parse(stored);
-        setAnalysisData(data);
-      } catch (e) {
-        console.error("Failed to parse analysis data:", e);
-        // Redirect back if no valid data
-        navigate("/analyze");
-      }
-    } else {
-      // No analysis data, redirect to analyze page
-      navigate("/analyze");
-    }
+      try { setAnalysisData(JSON.parse(stored)); }
+      catch { navigate("/analyze"); }
+    } else { navigate("/analyze"); }
   }, [navigate]);
 
   if (!analysisData) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#FAFBFF" }}>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 18, fontWeight: 600, color: NAVY, marginBottom: 8 }}>Loading analysis...</div>
-          <div style={{ fontSize: 14, color: TEXT_MUTED }}>Please wait</div>
+          <div style={{ width: 44, height: 44, border: "3px solid rgba(13,148,136,0.12)", borderTopColor: "#0D9488", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 18px" }} />
+          <div style={{ fontSize: 16, fontWeight: 600, color: "#0F172A" }}>Loading results...</div>
         </div>
       </div>
     );
   }
 
-  const score = analysisData.overall_trust_score;
   const verdict = analysisData.verdict;
-  const verdictColor = 
-    verdict.includes("VERIFIED") || verdict.includes("CREDIBLE") ? GREEN :
-    verdict.includes("SUSPICIOUS") ? AMBER : RED;
-
-  // Get verdict icon
-  const getVerdictIcon = (v: string) => {
-    if (v.includes("TRUE") || v.includes("VERIFIED")) return <CheckCircle size={14} />;
-    if (v.includes("FALSE") || v.includes("FAKE")) return <XCircle size={14} />;
-    return <AlertTriangle size={14} />;
-  };
-
-  const getVerdictColor = (v: string) => {
-    if (v.includes("TRUE") || v.includes("VERIFIED")) return GREEN;
-    if (v.includes("FALSE") || v.includes("FAKE")) return RED;
-    return AMBER;
-  };
+  const theme = getVerdictTheme(verdict);
+  const claims = analysisData.claim_verification?.claims || [];
+  const articles = analysisData.cross_reference?.related_articles || [];
+  const redFlags = analysisData.red_flags || [];
+  
+  // Debug: Log cross_reference data
+  console.log("Cross Reference Data:", analysisData.cross_reference);
+  console.log("Related Articles:", articles);
+  const hasMedia = analysisData.media_integrity && (
+    analysisData.media_integrity.ai_generated_probability !== null ||
+    analysisData.media_integrity.deepfake_probability !== null ||
+    analysisData.media_integrity.exif_data ||
+    analysisData.media_integrity.ela_result ||
+    analysisData.media_integrity.ai_voice_probability !== null
+  );
 
   return (
-    <div style={{ backgroundColor: BG_LIGHT, minHeight: "100vh", color: TEXT }}>
-      {/* Header */}
-      <div style={{ backgroundColor: "#FFFFFF", borderBottom: `1px solid ${BORDER}`, padding: "16px 24px" }}>
-        <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", alignItems: "center", gap: 12 }}>
-          <button
-            onClick={() => navigate("/analyze")}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              background: "none", border: `1px solid ${BORDER}`, borderRadius: 8,
-              padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: TEXT_MUTED,
-            }}
-          >
-            <ArrowLeft size={14} /> Back
+    <div style={{ backgroundColor: "#FAFBFF", minHeight: "100vh", color: "#1E293B", overflowX: "hidden" }}>
+      <style>{`
+        @keyframes fadeInUp{from{opacity:0;transform:translateY(35px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes fadeInScale{from{opacity:0;transform:scale(0.93)}to{opacity:1;transform:scale(1)}}
+        @keyframes slideInLeft{from{opacity:0;transform:translateX(-25px)}to{opacity:1;transform:translateX(0)}}
+        @keyframes shimmer{0%{left:-150%}100%{left:150%}}
+        @keyframes orbFloat{0%,100%{transform:translate(0,0) scale(1);opacity:0.6}33%{transform:translate(30px,-20px) scale(1.08);opacity:0.8}66%{transform:translate(-20px,15px) scale(0.95);opacity:0.5}}
+        @keyframes scanV{0%{transform:translateY(-100%);opacity:0}10%{opacity:1}90%{opacity:1}100%{transform:translateY(100%);opacity:0}}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes verdictPop{from{opacity:0;transform:scale(0.6) rotate(-5deg)}to{opacity:1;transform:scale(1) rotate(0deg)}}
+        @keyframes claimSlide{from{opacity:0;transform:translateX(-30px) scale(0.97)}to{opacity:1;transform:translateX(0) scale(1)}}
+        @keyframes gridPulse{0%,100%{opacity:.3}50%{opacity:.7}}
+        @keyframes verdictGlow{0%,100%{box-shadow:0 0 30px var(--glow,rgba(0,0,0,0.05))}50%{box-shadow:0 0 50px var(--glow,rgba(0,0,0,0.1))}}
+
+        .grid-r{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+        .grid-r::before{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(15,23,42,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(15,23,42,0.025) 1px,transparent 1px);background-size:60px 60px}
+        .grid-r::after{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(13,148,136,0.012) 1px,transparent 1px),linear-gradient(90deg,rgba(13,148,136,0.012) 1px,transparent 1px);background-size:180px 180px}
+
+        .glass-panel{background:rgba(255,255,255,0.58);backdrop-filter:blur(24px) saturate(190%);-webkit-backdrop-filter:blur(24px) saturate(190%);border:1px solid rgba(255,255,255,0.6);border-radius:24px;box-shadow:0 6px 32px rgba(0,0,0,0.03),inset 0 1px 0 rgba(255,255,255,0.85);position:relative;overflow:hidden}
+        .glass-sm{background:rgba(255,255,255,0.45);backdrop-filter:blur(14px) saturate(170%);-webkit-backdrop-filter:blur(14px) saturate(170%);border:1px solid rgba(255,255,255,0.5);border-radius:18px;box-shadow:0 4px 20px rgba(0,0,0,0.02),inset 0 1px 0 rgba(255,255,255,0.7);transition:all 0.4s cubic-bezier(0.23,1,0.32,1)}
+        .glass-sm:hover{background:rgba(255,255,255,0.7);box-shadow:0 12px 40px rgba(0,0,0,0.05),inset 0 1px 0 #fff;transform:translateY(-3px)}
+
+        .verdict-hero{padding:48px 44px;position:relative;overflow:hidden}
+        .verdict-hero::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:var(--verdict-gradient)}
+        .verdict-hero::after{content:'';position:absolute;inset:0;background:var(--verdict-bg);z-index:0}
+        .verdict-icon-wrap{width:84px;height:84px;border-radius:26px;display:flex;align-items:center;justify-content:center;position:relative;z-index:1;transition:all 0.4s ease;animation:verdictGlow 3s ease-in-out infinite}
+        .verdict-icon-wrap::after{content:'';position:absolute;inset:-8px;border-radius:30px;background:inherit;filter:blur(20px);opacity:0.25;z-index:-1}
+
+        .claim-item{background:rgba(255,255,255,0.4);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(226,232,240,0.35);border-radius:18px;padding:24px 24px 24px 28px;margin-bottom:14px;transition:all 0.4s cubic-bezier(0.23,1,0.32,1);position:relative}
+        .claim-item:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(0,0,0,0.04);background:rgba(255,255,255,0.65)}
+        .claim-border{position:absolute;left:0;top:16px;bottom:16px;width:3.5px;border-radius:3px}
+
+        .article-card{background:rgba(255,255,255,0.4);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(226,232,240,0.35);border-radius:16px;padding:18px 22px;margin-bottom:10px;transition:all 0.35s cubic-bezier(0.23,1,0.32,1);display:flex;align-items:center;gap:16px;cursor:pointer;text-decoration:none}
+        .article-card:hover{transform:translateX(6px);background:rgba(255,255,255,0.65);border-color:rgba(13,148,136,0.1);box-shadow:0 8px 28px rgba(0,0,0,0.04)}
+        .article-card:hover .article-arrow{transform:translateX(4px);opacity:1}
+        .article-arrow{transition:all 0.3s ease;opacity:0.4;flex-shrink:0}
+
+        .red-flag{display:flex;align-items:start;gap:12px;padding:14px 18px;margin-bottom:8px;background:rgba(239,68,68,0.03);border:1px solid rgba(239,68,68,0.06);border-radius:14px;transition:all 0.3s ease}
+        .red-flag:hover{background:rgba(239,68,68,0.06);transform:translateX(3px)}
+
+        .back-btn{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,0.5);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(226,232,240,0.4);border-radius:12px;padding:10px 20px;cursor:pointer;font-size:13px;font-weight:600;color:#64748B;transition:all 0.3s cubic-bezier(0.23,1,0.32,1)}
+        .back-btn:hover{transform:translateX(-4px);background:rgba(255,255,255,0.75);color:#0D9488;border-color:rgba(13,148,136,0.12)}
+
+        .primary-btn{display:inline-flex;align-items:center;gap:9px;padding:13px 26px;border:none;border-radius:14px;font-size:15px;font-weight:600;cursor:pointer;background:linear-gradient(135deg,#0D9488,#0F766E);color:#fff;box-shadow:0 4px 18px rgba(13,148,136,0.22);transition:all 0.35s cubic-bezier(0.23,1,0.32,1);position:relative;overflow:hidden}
+        .primary-btn::before{content:'';position:absolute;top:0;left:-150%;width:120%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent)}
+        .primary-btn:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 12px 35px rgba(13,148,136,0.3)}
+        .primary-btn:hover::before{animation:shimmer 0.65s ease forwards}
+        .primary-btn:active{transform:translateY(-1px) scale(1)}
+
+        .fb-btn{display:flex;align-items:center;gap:8px;padding:11px 20px;border-radius:14px;cursor:pointer;font-size:13px;font-weight:600;background:rgba(255,255,255,0.4);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:all 0.3s cubic-bezier(0.23,1,0.32,1)}
+        .fb-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,0.04)}
+
+        .view-link{display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border-radius:12px;font-size:13px;font-weight:600;text-decoration:none;background:linear-gradient(135deg,#0D9488,#0F766E);color:#fff;box-shadow:0 2px 12px rgba(13,148,136,0.18);transition:all 0.3s ease}
+        .view-link:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(13,148,136,0.25)}
+
+        .fc-chip{background:rgba(241,245,249,0.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:12px;padding:12px 16px;margin-bottom:8px;border:1px solid rgba(226,232,240,0.3);transition:all 0.25s ease}
+        .fc-chip:hover{background:rgba(255,255,255,0.5)}
+
+        .media-detail{background:rgba(241,245,249,0.4);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid rgba(226,232,240,0.35);border-radius:14px;padding:16px 20px;transition:all 0.3s ease}
+        .media-detail:hover{background:rgba(255,255,255,0.55);box-shadow:0 4px 16px rgba(0,0,0,0.02)}
+
+        .section-head{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+        .section-head-icon{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+        .section-head h3{font-size:18px;font-weight:700;color:#0F172A;letter-spacing:-0.3px;margin:0}
+
+        .copy-btn:hover{background:rgba(13,148,136,0.06)!important;border-color:rgba(13,148,136,0.12)!important;color:#0D9488!important}
+      `}</style>
+
+      {/* BG */}
+      <div className="grid-r" />
+      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 0 }}>
+        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "1px", background: "linear-gradient(90deg, transparent, rgba(13,148,136,0.12), transparent)", animation: "scanV 12s linear infinite" }} />
+        <div style={{ position: "absolute", top: "-12%", right: "-8%", width: 600, height: 600, borderRadius: "50%", background: `radial-gradient(circle, ${theme.color}08 0%, transparent 55%)`, filter: "blur(80px)", animation: "orbFloat 22s ease-in-out infinite" }} />
+        <div style={{ position: "absolute", bottom: "-15%", left: "-8%", width: 550, height: 550, borderRadius: "50%", background: "radial-gradient(circle, rgba(124,58,237,0.03) 0%, transparent 55%)", filter: "blur(70px)", animation: "orbFloat 28s ease-in-out infinite", animationDelay: "5s" }} />
+      </div>
+
+      {/* TOP BAR */}
+      <div style={{ position: "relative", zIndex: 10, padding: "14px 24px", background: "rgba(255,255,255,0.55)", backdropFilter: "blur(20px) saturate(180%)", WebkitBackdropFilter: "blur(20px) saturate(180%)", borderBottom: "1px solid rgba(226,232,240,0.35)" }}>
+        <div style={{ maxWidth: 880, margin: "0 auto", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <button onClick={() => navigate("/analyze")} className="back-btn">
+            <ArrowLeft size={15} /> Back
           </button>
-          <span style={{ fontSize: 14, color: TEXT_MUTED }}>
-            Analysis Report · <span style={{ color: TEXT }}>Analyzed {new Date(analysisData.timestamp).toLocaleString()}</span>
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#94A3B8" }}>
+            <Scan size={13} color="#0D9488" />
+            <span style={{ fontWeight: 600, color: "#64748B" }}>Analysis Report</span>
+            <span style={{ color: "#CBD5E1" }}>·</span>
+            <span>{new Date(analysisData.timestamp).toLocaleString()}</span>
+          </div>
         </div>
       </div>
 
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "36px 24px" }}>
+      {/* MAIN */}
+      <div style={{ position: "relative", zIndex: 1, maxWidth: 880, margin: "0 auto", padding: "44px 24px 90px" }}>
 
-        {/* Hero Result Card */}
-        <div
-          style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: 16,
-            border: `1px solid ${BORDER}`,
-            padding: "36px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-            marginBottom: 28,
-          }}
-        >
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 36, alignItems: "flex-start" }}>
-            {/* Gauge */}
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: TEXT_MUTED, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
-                Overall Trust Score
+        {/* VERDICT HERO */}
+        <div className="glass-panel verdict-hero" style={{ "--verdict-gradient": `linear-gradient(90deg, transparent, ${theme.color}50, transparent)`, "--verdict-bg": theme.bg, marginBottom: 28, animation: "fadeInScale 0.7s cubic-bezier(0.23,1,0.32,1) both" } as React.CSSProperties}>
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 24, marginBottom: 32, flexWrap: "wrap" }}>
+              <div className="verdict-icon-wrap" style={{ background: `linear-gradient(135deg, ${theme.color}15, ${theme.color}08)`, border: `2px solid ${theme.border}`, color: theme.color, animation: "verdictPop 0.6s cubic-bezier(0.23,1,0.32,1) 0.2s both", "--glow": `${theme.color}15` } as React.CSSProperties}>
+                {theme.icon}
               </div>
-              <TrustGauge score={score} />
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 10, padding: "10px 22px", borderRadius: 14, background: `${theme.color}08`, border: `1.5px solid ${theme.color}20`, marginBottom: 10, animation: "slideInLeft 0.5s cubic-bezier(0.23,1,0.32,1) 0.3s both" }}>
+                  {theme.isFake ? <XCircle size={18} color={theme.color} /> : <CheckCircle size={18} color={theme.color} />}
+                  <span style={{ fontSize: 18, fontWeight: 800, color: theme.color, letterSpacing: "0.5px" }}>
+                    {verdict.includes("AI_GENERATED_IMAGE") ? "MIXED SIGNALS" : theme.isFake ? "FAKE NEWS" : "REAL NEWS"}
+                  </span>
+                </div>
+                <div style={{ fontSize: 17, fontWeight: 600, color: "#0F172A", lineHeight: 1.4, letterSpacing: "-0.3px", animation: "slideInLeft 0.6s cubic-bezier(0.23,1,0.32,1) 0.35s both" }}>
+                  {theme.label}
+                </div>
+              </div>
             </div>
 
-            {/* Verdict */}
-            <div style={{ flex: 1, minWidth: 260 }}>
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  backgroundColor: `${verdictColor}15`,
-                  borderRadius: 8,
-                  padding: "6px 14px",
-                  marginBottom: 14,
-                }}
-              >
-                {getVerdictIcon(verdict)}
-                <span style={{ fontWeight: 800, color: verdictColor, fontSize: 15, letterSpacing: "0.3px" }}>
-                  {verdict.replace(/_/g, " ")}
-                </span>
-              </div>
-              <p style={{ fontSize: 15, color: TEXT, lineHeight: 1.65, marginBottom: 16 }}>
-                {analysisData.summary}
-              </p>
-              
-              {/* Red Flags */}
-              {analysisData.red_flags && analysisData.red_flags.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: RED, marginBottom: 8 }}>⚠️ Red Flags:</div>
-                  {analysisData.red_flags.slice(0, 3).map((flag, i) => (
-                    <div key={i} style={{ fontSize: 13, color: TEXT_MUTED, marginBottom: 4 }}>• {flag}</div>
-                  ))}
+            {/* AI Summary */}
+            <div style={{ animation: "fadeInUp 0.7s cubic-bezier(0.23,1,0.32,1) 0.4s both" }}>
+              {/* Special notice for AI-generated images with credible text */}
+              {verdict.includes("AI_GENERATED_IMAGE_TRUE_CONTENT") && (
+                <div style={{ display: "flex", alignItems: "start", gap: 14, padding: "18px 22px", background: "rgba(245,158,11,0.05)", border: "1.5px solid rgba(245,158,11,0.15)", borderRadius: 16, marginBottom: 20 }}>
+                  <Lightbulb size={18} color="#F59E0B" style={{ marginTop: 2, flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#F59E0B", marginBottom: 6, letterSpacing: "0.3px" }}>IMPORTANT CONTEXT</div>
+                    <p style={{ fontSize: 14, color: "#475569", lineHeight: 1.7, margin: 0 }}>
+                      This image was created by AI, but the text content it contains appears to be accurate news. This is common when real news is illustrated with AI-generated imagery. Always verify with the original source.
+                    </p>
+                  </div>
                 </div>
               )}
               
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button
-                  onClick={() => navigate("/analyze")}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 7, padding: "9px 16px",
-                    border: `1.5px solid ${NAVY}`, borderRadius: 8, background: NAVY,
-                    cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#FFFFFF",
-                  }}
-                >
-                  <RefreshCw size={14} /> Analyze Another
-                </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                <MessageSquare size={14} color="#0D9488" />
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#0D9488", letterSpacing: "0.8px", textTransform: "uppercase" }}>AI Analysis</span>
               </div>
+              <p style={{ fontSize: 16, color: "#334155", lineHeight: 1.85, margin: 0, fontWeight: 450 }}>
+                {analysisData.summary}
+              </p>
             </div>
-          </div>
 
-          {/* Score breakdown row */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-              gap: 12,
-              marginTop: 28,
-              borderTop: `1px solid ${BORDER}`,
-              paddingTop: 24,
-            }}
-          >
-            {[
-              { label: "Source Credibility", value: analysisData.source_credibility.score },
-              { label: "Language Analysis", value: 100 - analysisData.language_analysis.sensationalism_score },
-              { label: "Cross-Reference", value: analysisData.cross_reference.credible_sources_count * 20 },
-            ].map((s) => {
-              const color = s.value <= 30 ? RED : s.value <= 60 ? AMBER : GREEN;
-              return (
-                <div key={s.label}>
-                  <div style={{ fontSize: 12, color: TEXT_MUTED, marginBottom: 6 }}>{s.label}</div>
-                  <div style={{ height: 6, backgroundColor: "#F1F5F9", borderRadius: 3, overflow: "hidden", marginBottom: 4 }}>
-                    <div style={{ height: "100%", width: `${s.value}%`, backgroundColor: color, borderRadius: 3 }} />
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color }}>{Math.round(s.value)}</div>
+            {/* Red Flags */}
+            {theme.isFake && redFlags.length > 0 && (
+              <div style={{ marginTop: 28, animation: "fadeInUp 0.7s cubic-bezier(0.23,1,0.32,1) 0.5s both" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                  <FileWarning size={14} color="#EF4444" />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#EF4444", letterSpacing: "0.8px", textTransform: "uppercase" }}>Why this is fake</span>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Analysis Cards */}
-
-        {/* Card 1: Source Credibility */}
-        <CollapsibleCard
-          icon={<Shield size={18} color={analysisData.source_credibility.score > 60 ? GREEN : RED} />}
-          title="Source Credibility"
-          badge={`${analysisData.source_credibility.score} / 100`}
-          badgeColor={analysisData.source_credibility.score > 60 ? GREEN : RED}
-          defaultOpen={true}
-        >
-          <div>
-            {analysisData.source_credibility.domain && (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-                <div style={{ width: 32, height: 32, backgroundColor: "#F1F5F9", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Globe size={16} color={TEXT_MUTED} />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700, color: TEXT, fontSize: 14 }}>{analysisData.source_credibility.domain}</div>
-                  {analysisData.source_credibility.domain_age && (
-                    <div style={{ fontSize: 12, color: TEXT_MUTED }}>Domain age: {analysisData.source_credibility.domain_age}</div>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            <div style={{ padding: "12px 16px", backgroundColor: BG_LIGHT, borderRadius: 8, marginBottom: 12 }}>
-              <div style={{ fontSize: 13, color: TEXT, lineHeight: 1.6 }}>{analysisData.source_credibility.details}</div>
-            </div>
-            
-            {analysisData.source_credibility.bias && analysisData.source_credibility.bias !== "NOT_APPLICABLE" && (
-              <div style={{ padding: "10px 14px", backgroundColor: "#FEF3C7", borderRadius: 8 }}>
-                <div style={{ fontSize: 12, color: TEXT_MUTED, marginBottom: 3 }}>Political Bias</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: AMBER }}>{analysisData.source_credibility.bias.replace(/_/g, " ")}</div>
-              </div>
-            )}
-          </div>
-        </CollapsibleCard>
-
-        {/* Card 2: Claim Verification */}
-        {analysisData.claim_verification.claims.length > 0 && (
-          <CollapsibleCard
-            icon={<Search size={18} color={AMBER} />}
-            title="Claim Verification"
-            badge={`${analysisData.claim_verification.verified_count} / ${analysisData.claim_verification.claims.length} Verified`}
-            badgeColor={analysisData.claim_verification.verified_count > analysisData.claim_verification.false_count ? GREEN : RED}
-            defaultOpen={true}
-          >
-            <div>
-              {analysisData.claim_verification.claims.map((claim: any, i: number) => (
-                <div
-                  key={i}
-                  style={{
-                    border: `1px solid ${BORDER}`,
-                    borderRadius: 10,
-                    padding: "16px",
-                    marginBottom: 12,
-                    borderLeft: `3px solid ${getVerdictColor(claim.verdict || "UNVERIFIED")}`,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={{ color: getVerdictColor(claim.verdict || "UNVERIFIED") }}>
-                        {getVerdictIcon(claim.verdict || "UNVERIFIED")}
-                      </div>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: getVerdictColor(claim.verdict || "UNVERIFIED"),
-                          backgroundColor: `${getVerdictColor(claim.verdict || "UNVERIFIED")}15`,
-                          borderRadius: 4,
-                          padding: "2px 8px",
-                        }}
-                      >
-                        {claim.verdict || "UNVERIFIED"}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: TEXT, marginBottom: 8 }}>
-                    "{claim.claim_text}"
-                  </div>
-                  {claim.reasoning && (
-                    <p style={{ fontSize: 13, color: TEXT_MUTED, lineHeight: 1.6, marginBottom: 10 }}>{claim.reasoning}</p>
-                  )}
-                  
-                  {/* External Fact-Check Results */}
-                  {claim.external_fact_checks && claim.external_fact_checks.length > 0 && (
-                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${BORDER}` }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: TEXT_MUTED, marginBottom: 8 }}>
-                        🔍 External Fact-Checks
-                      </div>
-                      {claim.external_fact_checks.map((fc: any, fcIdx: number) => (
-                        <div key={fcIdx} style={{ marginBottom: 8, padding: "8px 12px", backgroundColor: BG_LIGHT, borderRadius: 6 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: TEXT, marginBottom: 4 }}>
-                            {fc.fact_checker_name}
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
-                            <span
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: fc.fact_check_rating.toLowerCase().includes("false") ? RED : fc.fact_check_rating.toLowerCase().includes("true") ? GREEN : AMBER,
-                                backgroundColor: `${fc.fact_check_rating.toLowerCase().includes("false") ? RED : fc.fact_check_rating.toLowerCase().includes("true") ? GREEN : AMBER}15`,
-                                borderRadius: 4,
-                                padding: "2px 8px",
-                              }}
-                            >
-                              {fc.fact_check_rating}
-                            </span>
-                            {fc.fact_checker_url && (
-                              <a
-                                href={fc.fact_checker_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                  fontSize: 11,
-                                  color: TEAL,
-                                  textDecoration: "none",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                View Fact-Check <ExternalLink size={10} />
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CollapsibleCard>
-        )}
-
-        {/* Card 3: Language & Bias */}
-        <CollapsibleCard
-          icon={<FileText size={18} color={AMBER} />}
-          title="Language & Bias Analysis"
-          badge={analysisData.language_analysis.sensationalism_score > 70 ? "High Sensationalism" : "Moderate"}
-          badgeColor={analysisData.language_analysis.sensationalism_score > 70 ? RED : AMBER}
-        >
-          <div>
-            <ProgressBar value={analysisData.language_analysis.sensationalism_score} color={RED} label="Sensationalism Score" percent />
-            <ProgressBar value={analysisData.language_analysis.clickbait_score} color={AMBER} label="Clickbait Score" percent />
-            
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>Tone</div>
-              <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>{analysisData.language_analysis.tone}</span>
-              </div>
-            </div>
-            
-            {analysisData.language_analysis.logical_fallacies.length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>Logical Fallacies Detected</div>
-                {analysisData.language_analysis.logical_fallacies.map((f: string, i: number) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <div style={{ width: 6, height: 6, backgroundColor: RED, borderRadius: "50%" }} />
-                    <span style={{ fontSize: 13, color: TEXT }}>{f}</span>
+                {redFlags.slice(0, 5).map((flag, i) => (
+                  <div key={i} className="red-flag" style={{ animation: `claimSlide 0.5s cubic-bezier(0.23,1,0.32,1) ${0.55 + i * 0.06}s both` }}>
+                    <XCircle size={14} color="#EF4444" style={{ marginTop: 2, flexShrink: 0 }} />
+                    <span style={{ fontSize: 14, color: "#475569", lineHeight: 1.6 }}>{flag}</span>
                   </div>
                 ))}
               </div>
             )}
+
+            <div style={{ marginTop: 32, animation: "fadeInUp 0.7s cubic-bezier(0.23,1,0.32,1) 0.65s both" }}>
+              <button onClick={() => navigate("/analyze")} className="primary-btn">
+                <RefreshCw size={16} /> Analyze Another Content
+              </button>
+            </div>
           </div>
-        </CollapsibleCard>
+        </div>
 
-        {/* Card 3.5: Media Integrity (for images/videos/audio) */}
-        {analysisData.media_integrity && (
-          analysisData.media_integrity.ai_generated_probability !== null ||
-          analysisData.media_integrity.exif_data ||
-          analysisData.media_integrity.ela_result ||
-          analysisData.media_integrity.deepfake_probability !== null
-        ) && (
-          <CollapsibleCard
-            icon={<Image size={18} color={TEAL} />}
-            title="Media Integrity Analysis"
-            badge={
-              analysisData.media_integrity.ai_generated_probability !== null && analysisData.media_integrity.ai_generated_probability > 0.7
-                ? "AI Generated"
-                : analysisData.media_integrity.deepfake_probability !== null && analysisData.media_integrity.deepfake_probability > 0.7
-                ? "Deepfake Detected"
-                : "Analyzed"
-            }
-            badgeColor={
-              (analysisData.media_integrity.ai_generated_probability !== null && analysisData.media_integrity.ai_generated_probability > 0.7) ||
-              (analysisData.media_integrity.deepfake_probability !== null && analysisData.media_integrity.deepfake_probability > 0.7)
-                ? RED
-                : GREEN
-            }
-            defaultOpen={true}
-          >
-            <div>
-              {/* AI Generated Detection */}
-              {analysisData.media_integrity.ai_generated_probability !== null && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>AI-Generated Detection</div>
-                  <ProgressBar
-                    value={Math.round(analysisData.media_integrity.ai_generated_probability * 100)}
-                    color={analysisData.media_integrity.ai_generated_probability > 0.7 ? RED : analysisData.media_integrity.ai_generated_probability > 0.5 ? AMBER : GREEN}
-                    label="AI-Generated Probability"
-                    percent
-                  />
-                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginTop: 8 }}>
-                    <span style={{ fontSize: 13, color: TEXT }}>
-                      {analysisData.media_integrity.ai_generated_probability > 0.7
-                        ? "High probability this content was AI-generated (MidJourney, DALL-E, Stable Diffusion)"
-                        : analysisData.media_integrity.ai_generated_probability > 0.5
-                        ? "Moderate probability of AI generation"
-                        : "Likely authentic human-created content"}
-                    </span>
-                  </div>
+        {/* INPUT PREVIEW */}
+        <InputPreview data={analysisData} />
+
+        {/* ===== CLAIM-BY-CLAIM ANALYSIS ===== */}
+        {claims.length > 0 && (
+          <div style={{ animation: "fadeInUp 0.6s cubic-bezier(0.23,1,0.32,1) 0.75s both" }}>
+            <div className="glass-panel" style={{ padding: "36px 38px", marginBottom: 28 }}>
+              <div className="section-head">
+                <div className="section-head-icon" style={{ background: "rgba(13,148,136,0.06)", border: "1px solid rgba(13,148,136,0.08)" }}>
+                  <Search size={17} color="#0D9488" />
                 </div>
-              )}
-
-              {/* Deepfake Detection */}
-              {analysisData.media_integrity.deepfake_probability !== null && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>🎭 Deepfake Detection</div>
-                  <ProgressBar
-                    value={Math.round(analysisData.media_integrity.deepfake_probability * 100)}
-                    color={analysisData.media_integrity.deepfake_probability > 0.7 ? RED : analysisData.media_integrity.deepfake_probability > 0.5 ? AMBER : GREEN}
-                    label="Deepfake Probability"
-                    percent
-                  />
-                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginTop: 8 }}>
-                    <span style={{ fontSize: 13, color: TEXT }}>
-                      {analysisData.media_integrity.deepfake_probability > 0.7
-                        ? "High probability of deepfake manipulation detected"
-                        : analysisData.media_integrity.deepfake_probability > 0.5
-                        ? "Moderate probability of deepfake"
-                        : "Likely authentic video"}
-                    </span>
-                  </div>
-                  
-                  {/* Video-specific deepfake details */}
-                  {analysisData.media_integrity.deepfake_frames && (
-                    <div style={{ marginTop: 12, padding: "10px 14px", backgroundColor: "#FEF3C7", borderRadius: 8 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: TEXT, marginBottom: 6 }}>
-                        Frame Analysis: {analysisData.media_integrity.deepfake_frames.frames_analyzed} frames analyzed
-                      </div>
-                      {analysisData.media_integrity.deepfake_frames.frames_flagged > 0 && (
-                        <div style={{ fontSize: 12, color: RED }}>
-                          ⚠️ {analysisData.media_integrity.deepfake_frames.frames_flagged} frame(s) flagged as deepfake
-                        </div>
-                      )}
-                      <div style={{ fontSize: 12, color: TEXT_MUTED, marginTop: 4 }}>
-                        Max probability: {analysisData.media_integrity.deepfake_frames.max_deepfake_probability}%
-                      </div>
-                    </div>
-                  )}
+                <div>
+                  <h3>Claim-by-Claim Analysis</h3>
+                  <p style={{ fontSize: 13, color: "#94A3B8", margin: "4px 0 0" }}>Each claim was individually checked against fact-check databases and real-time sources</p>
                 </div>
-              )}
+              </div>
 
-              {/* Video Metadata */}
-              {analysisData.media_integrity.video_metadata && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>📹 Video Metadata</div>
-                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginBottom: 8 }}>
-                    <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
-                      <strong>Duration:</strong> {analysisData.media_integrity.video_metadata.duration_formatted}
-                    </div>
-                    <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
-                      <strong>Resolution:</strong> {analysisData.media_integrity.video_metadata.resolution}
-                    </div>
-                    <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
-                      <strong>Codec:</strong> {analysisData.media_integrity.video_metadata.codec}
-                    </div>
-                    {analysisData.media_integrity.video_metadata.creation_tool && analysisData.media_integrity.video_metadata.creation_tool !== "Unknown" && (
-                      <div style={{ fontSize: 13, color: TEXT }}>
-                        <strong>Creation Tool:</strong> {analysisData.media_integrity.video_metadata.creation_tool}
-                      </div>
-                    )}
-                  </div>
-                  {analysisData.media_integrity.video_metadata.is_ai_tool_detected && (
-                    <div style={{ padding: "10px 14px", backgroundColor: "#FEE2E2", borderRadius: 8 }}>
-                      <span style={{ fontSize: 13, color: RED, fontWeight: 600 }}>
-                        ⚠️ AI Video Tool Detected: {analysisData.media_integrity.video_metadata.ai_tool_name}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
+              {claims.map((claim: any, i: number) => {
+                const ct = getClaimTheme(claim.verdict);
+                const verdictText = formatVerdict(claim.verdict);
 
-              {/* EXIF Metadata */}
-              {analysisData.media_integrity.exif_data && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>📷 EXIF Metadata</div>
-                  {analysisData.media_integrity.exif_data.has_metadata ? (
-                    <div>
-                      <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginBottom: 8 }}>
-                        {analysisData.media_integrity.exif_data.camera_make && (
-                          <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
-                            <strong>Camera:</strong> {analysisData.media_integrity.exif_data.camera_make} {analysisData.media_integrity.exif_data.camera_model}
-                          </div>
-                        )}
-                        {analysisData.media_integrity.exif_data.software && analysisData.media_integrity.exif_data.software !== "None" && (
-                          <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
-                            <strong>Software:</strong> {analysisData.media_integrity.exif_data.software}
-                          </div>
-                        )}
-                        {analysisData.media_integrity.exif_data.datetime && analysisData.media_integrity.exif_data.datetime !== "Unknown" && (
-                          <div style={{ fontSize: 13, color: TEXT }}>
-                            <strong>Date:</strong> {analysisData.media_integrity.exif_data.datetime}
-                          </div>
-                        )}
-                      </div>
-                      {analysisData.media_integrity.exif_data.warnings && analysisData.media_integrity.exif_data.warnings.length > 0 && (
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: AMBER, marginBottom: 6 }}>⚠️ Warnings:</div>
-                          {analysisData.media_integrity.exif_data.warnings.map((warning: string, i: number) => (
-                            <div key={i} style={{ fontSize: 12, color: TEXT_MUTED, marginBottom: 4 }}>• {warning}</div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div style={{ padding: "10px 14px", backgroundColor: "#FEF3C7", borderRadius: 8 }}>
-                      <span style={{ fontSize: 13, color: AMBER, fontWeight: 600 }}>⚠️ No metadata found - possibly stripped</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ELA Analysis */}
-              {analysisData.media_integrity.ela_result && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>🔍 Error Level Analysis (ELA)</div>
-                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginBottom: 8 }}>
-                    <span style={{ fontSize: 13, color: TEXT }}>
-                      ELA detects image manipulation by analyzing compression artifacts. Manipulated regions show higher error levels.
-                    </span>
-                  </div>
-                  {analysisData.media_integrity.ela_result && (
-                    <a
-                      href={`http://localhost:8000${analysisData.media_integrity.ela_result}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        padding: "8px 14px",
-                        backgroundColor: TEAL,
-                        color: "#FFFFFF",
-                        borderRadius: 8,
-                        textDecoration: "none",
-                        fontSize: 13,
-                        fontWeight: 600,
-                      }}
-                    >
-                      View ELA Image <ExternalLink size={14} />
-                    </a>
-                  )}
-                </div>
-              )}
-
-              {/* AI Voice Detection */}
-              {analysisData.media_integrity.ai_voice_probability !== null && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>🎤 AI Voice Detection</div>
-                  <ProgressBar
-                    value={Math.round(analysisData.media_integrity.ai_voice_probability * 100)}
-                    color={analysisData.media_integrity.ai_voice_probability > 0.7 ? RED : analysisData.media_integrity.ai_voice_probability > 0.5 ? AMBER : GREEN}
-                    label="AI Voice Probability"
-                    percent
-                  />
-                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginTop: 8 }}>
-                    <span style={{ fontSize: 13, color: TEXT }}>
-                      {analysisData.media_integrity.ai_voice_probability > 0.7
-                        ? "High probability of AI-generated voice (ElevenLabs, voice cloning)"
-                        : analysisData.media_integrity.ai_voice_probability > 0.5
-                        ? "Moderate probability of AI voice"
-                        : "Likely authentic human voice"}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Audio Transcription */}
-              {analysisData.media_integrity.transcription && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>📝 Audio Transcription</div>
-                  <div style={{ 
-                    padding: "12px 16px", 
-                    backgroundColor: BG_LIGHT, 
-                    borderRadius: 8,
-                    maxHeight: 200,
-                    overflowY: "auto",
-                    fontSize: 13,
-                    color: TEXT,
-                    lineHeight: 1.6,
-                    fontFamily: "monospace"
-                  }}>
-                    {analysisData.media_integrity.transcription}
-                  </div>
-                </div>
-              )}
-
-              {/* Spectrogram */}
-              {analysisData.media_integrity.spectrogram_url && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>📊 Spectrogram Analysis</div>
-                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8, marginBottom: 8 }}>
-                    <span style={{ fontSize: 13, color: TEXT }}>
-                      Frequency analysis over time. AI-generated voices often show unnatural patterns in high frequencies.
-                    </span>
-                  </div>
-                  <a
-                    href={`http://localhost:8000${analysisData.media_integrity.spectrogram_url}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                return (
+                  <div
+                    key={i}
+                    className="claim-item"
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "8px 14px",
-                      backgroundColor: TEAL,
-                      color: "#FFFFFF",
-                      borderRadius: 8,
-                      textDecoration: "none",
-                      fontSize: 13,
-                      fontWeight: 600,
+                      borderLeft: `3.5px solid ${ct.color}`,
+                      animation: `claimSlide 0.5s cubic-bezier(0.23,1,0.32,1) ${0.8 + i * 0.08}s both`,
                     }}
                   >
-                    View Spectrogram <ExternalLink size={14} />
-                  </a>
-                </div>
-              )}
+                    <div className="claim-border" style={{ background: `linear-gradient(180deg, ${ct.color}, ${ct.color}60)`, boxShadow: `0 0 8px ${ct.color}20` }} />
 
-              {/* Audio Splice Detection */}
-              {analysisData.media_integrity.splice_detection && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 8 }}>✂️ Splice Detection</div>
-                  <div style={{ padding: "10px 14px", backgroundColor: BG_LIGHT, borderRadius: 8 }}>
-                    {analysisData.media_integrity.splice_detection.splice_detected ? (
-                      <div>
-                        <div style={{ fontSize: 13, color: RED, fontWeight: 600, marginBottom: 6 }}>
-                          ⚠️ Audio splicing detected
-                        </div>
-                        <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
-                          <strong>Splice Points:</strong> {analysisData.media_integrity.splice_detection.potential_splice_points?.join(", ")}s
-                        </div>
-                        <div style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
-                          <strong>Confidence:</strong> {analysisData.media_integrity.splice_detection.confidence}%
-                        </div>
-                        <div style={{ fontSize: 12, color: TEXT_MUTED }}>
-                          {analysisData.media_integrity.splice_detection.notes}
+                    {/* RAW API VERDICT — shown exactly as returned */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                      <span style={{ color: ct.color, display: "flex" }}>{ct.icon}</span>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: ct.color,
+                          background: ct.bg,
+                          border: `1.5px solid ${ct.color}18`,
+                          borderRadius: 10,
+                          padding: "6px 16px",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
+                        {verdictText}
+                      </span>
+                    </div>
+
+                    {/* The claim itself */}
+                    <div style={{ display: "flex", alignItems: "start", gap: 10, marginBottom: 14 }}>
+                      <Quote size={15} color="#CBD5E1" style={{ marginTop: 3, flexShrink: 0 }} />
+                      <p style={{ fontSize: 15, fontWeight: 600, color: "#0F172A", lineHeight: 1.6, margin: 0 }}>
+                        {claim.claim_text}
+                      </p>
+                    </div>
+
+                    {/* REASONING — explains WHY this verdict */}
+                    {claim.reasoning && (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "start",
+                          gap: 10,
+                          padding: "14px 18px",
+                          background: ct.bg,
+                          border: `1px solid ${ct.color}0A`,
+                          borderRadius: 12,
+                          marginTop: 4,
+                        }}
+                      >
+                        <Lightbulb size={14} color={ct.color} style={{ marginTop: 2, flexShrink: 0 }} />
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: ct.color, letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 6 }}>
+                            Why this is {verdictText.toLowerCase()}
+                          </div>
+                          <p style={{ fontSize: 14, color: "#475569", lineHeight: 1.75, margin: 0 }}>
+                            {claim.reasoning}
+                          </p>
                         </div>
                       </div>
-                    ) : (
-                      <span style={{ fontSize: 13, color: GREEN }}>✓ No audio splicing detected</span>
+                    )}
+
+                    {/* External fact checks */}
+                    {claim.external_fact_checks?.length > 0 && (
+                      <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(226,232,240,0.3)" }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                          <Eye size={12} /> External Verification Sources
+                        </div>
+                        {claim.external_fact_checks.map((fc: any, fi: number) => {
+                          const fcV = fc.fact_check_rating.toUpperCase();
+                          const fcColor = fcV.includes("TRUE") ? "#10B981" : fcV.includes("FALSE") ? "#EF4444" : "#F59E0B";
+                          return (
+                            <div key={fi} className="fc-chip">
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: "#334155" }}>{fc.fact_checker_name}</span>
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: fcColor, background: `${fcColor}08`, border: `1px solid ${fcColor}12`, borderRadius: 6, padding: "3px 9px" }}>
+                                    {fc.fact_check_rating}
+                                  </span>
+                                </div>
+                                {fc.fact_checker_url && (
+                                  <a href={fc.fact_checker_url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#0D9488", textDecoration: "none", fontWeight: 600 }}>
+                                    View source <ExternalLink size={11} />
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
-                </div>
-              )}
+                );
+              })}
             </div>
-          </CollapsibleCard>
+          </div>
         )}
 
-        {/* Card 4: Cross-Reference */}
-        {analysisData.cross_reference.related_articles.length > 0 && (
-          <CollapsibleCard
-            icon={<Globe size={18} color={TEAL} />}
-            title="Cross-Reference & News Sources"
-            badge={`${analysisData.cross_reference.credible_sources_count} Credible Sources`}
-            badgeColor={analysisData.cross_reference.credible_sources_count > 0 ? GREEN : RED}
-          >
-            <div>
-              {/* Web Search Evidence Badge */}
-              {analysisData.web_search_evidence?.search_performed && (
-                <div style={{ marginBottom: 16, padding: "12px 16px", backgroundColor: "#EFF6FF", borderRadius: 8, border: "1px solid #3B82F6" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <Search size={14} color="#3B82F6" />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "#3B82F6" }}>
-                      Real-Time Web Search Performed
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, color: TEXT_MUTED }}>
-                    Searched {analysisData.web_search_evidence.total_results_found} sources including {analysisData.web_search_evidence.news_results_count} news articles
-                    {analysisData.web_search_evidence.coverage_level && (
-                      <span> • Coverage: <strong>{analysisData.web_search_evidence.coverage_level.replace(/_/g, " ")}</strong></span>
-                    )}
-                  </div>
-                  {analysisData.web_search_evidence.search_timestamp && (
-                    <div style={{ fontSize: 11, color: TEXT_MUTED, marginTop: 4 }}>
-                      Searched at: {new Date(analysisData.web_search_evidence.search_timestamp).toLocaleString()}
-                    </div>
-                  )}
+        {/* MEDIA INTEGRITY */}
+        {hasMedia && (
+          <div style={{ animation: "fadeInUp 0.6s cubic-bezier(0.23,1,0.32,1) 0.9s both" }}>
+            <div className="glass-panel" style={{ padding: "36px 38px", marginBottom: 28 }}>
+              <div className="section-head">
+                <div className="section-head-icon" style={{ background: "rgba(124,58,237,0.06)", border: "1px solid rgba(124,58,237,0.08)" }}>
+                  <Layers size={17} color="#7C3AED" />
                 </div>
-              )}
-              
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                  gap: 12,
-                  marginBottom: 20,
-                }}
-              >
-                <div style={{ padding: "16px", backgroundColor: "#F0FDF4", borderRadius: 10, border: `1px solid ${GREEN}`, textAlign: "center" }}>
-                  <div style={{ fontSize: 24, fontWeight: 800, color: GREEN }}>{analysisData.cross_reference.credible_sources_count}</div>
-                  <div style={{ fontSize: 13, color: TEXT_MUTED }}>Credible sources</div>
-                </div>
-                <div style={{ padding: "16px", backgroundColor: "#FEF2F2", borderRadius: 10, border: `1px solid ${RED}`, textAlign: "center" }}>
-                  <div style={{ fontSize: 24, fontWeight: 800, color: RED }}>{analysisData.cross_reference.unreliable_sources_count}</div>
-                  <div style={{ fontSize: 13, color: TEXT_MUTED }}>Unreliable sources</div>
+                <div>
+                  <h3>Media Analysis</h3>
+                  <p style={{ fontSize: 13, color: "#94A3B8", margin: "4px 0 0" }}>
+                    {verdict.includes("AI_GENERATED_IMAGE") ? "Image authenticity vs text content credibility" : "Forensic analysis of the uploaded media"}
+                  </p>
                 </div>
               </div>
               
-              <div style={{ fontSize: 14, fontWeight: 600, color: TEXT, marginBottom: 12 }}>Related News Articles</div>
-              {analysisData.cross_reference.related_articles.slice(0, 5).map((article: any, i: number) => (
-                <div key={i} style={{ border: `1px solid ${BORDER}`, borderRadius: 8, padding: "12px", marginBottom: 8 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 4 }}>{article.title}</div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                    <span style={{ fontSize: 12, color: TEAL }}>{article.source_name}</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {article.is_credible && (
-                        <span style={{ fontSize: 11, fontWeight: 700, color: GREEN, backgroundColor: `${GREEN}15`, borderRadius: 4, padding: "2px 8px" }}>
-                          Credible
-                        </span>
-                      )}
-                      {article.url && (
-                        <a
-                          href={article.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 4,
-                            fontSize: 12,
-                            color: TEAL,
-                            textDecoration: "none",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Read <ExternalLink size={12} />
-                        </a>
-                      )}
+              {/* Show separation notice for AI-generated images with text */}
+              {verdict.includes("AI_GENERATED_IMAGE") && (
+                <div style={{ display: "flex", alignItems: "start", gap: 12, padding: "14px 18px", background: "rgba(99,102,241,0.04)", border: "1px solid rgba(99,102,241,0.08)", borderRadius: 12, marginBottom: 18 }}>
+                  <Eye size={14} color="#6366F1" style={{ marginTop: 2, flexShrink: 0 }} />
+                  <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.6, margin: 0 }}>
+                    We analyze the image and text separately. An AI-generated image can still contain accurate news text.
+                  </p>
+                </div>
+              )}
+              
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+                {analysisData.media_integrity.ai_generated_probability !== null && (
+                  <div className="media-detail">
+                    <div style={{ fontSize: 12, color: "#94A3B8", fontWeight: 500, marginBottom: 6 }}>Image Authenticity</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: analysisData.media_integrity.ai_generated_probability > 0.5 ? "#EF4444" : "#10B981" }}>
+                      {analysisData.media_integrity.ai_generated_probability > 0.5 ? "AI-Generated" : "Authentic"}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 4 }}>
+                      {(analysisData.media_integrity.ai_generated_probability * 100).toFixed(0)}% confidence
                     </div>
                   </div>
+                )}
+                {analysisData.media_integrity.deepfake_probability !== null && (
+                  <div className="media-detail">
+                    <div style={{ fontSize: 12, color: "#94A3B8", fontWeight: 500, marginBottom: 6 }}>Deepfake</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: analysisData.media_integrity.deepfake_probability > 0.5 ? "#EF4444" : "#10B981" }}>
+                      {analysisData.media_integrity.deepfake_probability > 0.5 ? "Fake — Deepfake" : "Real — Authentic"}
+                    </div>
+                  </div>
+                )}
+                {analysisData.media_integrity.ai_voice_probability !== null && (
+                  <div className="media-detail">
+                    <div style={{ fontSize: 12, color: "#94A3B8", fontWeight: 500, marginBottom: 6 }}>Voice</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: analysisData.media_integrity.ai_voice_probability > 0.5 ? "#EF4444" : "#10B981" }}>
+                      {analysisData.media_integrity.ai_voice_probability > 0.5 ? "Fake — AI Voice" : "Real — Human Voice"}
+                    </div>
+                  </div>
+                )}
+                {analysisData.media_integrity.exif_data && (
+                  <div className="media-detail">
+                    <div style={{ fontSize: 12, color: "#94A3B8", fontWeight: 500, marginBottom: 6 }}>Metadata</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: analysisData.media_integrity.exif_data.has_metadata ? "#10B981" : "#EF4444" }}>
+                      {analysisData.media_integrity.exif_data.has_metadata ? "Present" : "Stripped — Suspicious"}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 22 }}>
+                {analysisData.media_integrity.ela_result && (
+                  <a href={`http://localhost:8000${analysisData.media_integrity.ela_result}`} target="_blank" rel="noopener noreferrer" className="view-link">View ELA Analysis <ExternalLink size={13} /></a>
+                )}
+                {analysisData.media_integrity.spectrogram_url && (
+                  <a href={`http://localhost:8000${analysisData.media_integrity.spectrogram_url}`} target="_blank" rel="noopener noreferrer" className="view-link">View Spectrogram <ExternalLink size={13} /></a>
+                )}
+              </div>
+              {analysisData.media_integrity.transcription && (
+                <div style={{ marginTop: 22 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>Transcription</div>
+                  <div className="media-detail" style={{ maxHeight: 180, overflowY: "auto", fontFamily: "monospace", fontSize: 13, lineHeight: 1.7, color: "#334155" }}>{analysisData.media_integrity.transcription}</div>
                 </div>
-              ))}
+              )}
+              {analysisData.media_integrity.splice_detection && (
+                <div style={{ marginTop: 18 }}>
+                  <div className="media-detail" style={{ background: analysisData.media_integrity.splice_detection.splice_detected ? "rgba(239,68,68,0.03)" : "rgba(16,185,129,0.03)", border: `1px solid ${analysisData.media_integrity.splice_detection.splice_detected ? "rgba(239,68,68,0.08)" : "rgba(16,185,129,0.08)"}` }}>
+                    {analysisData.media_integrity.splice_detection.splice_detected ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "#EF4444", fontWeight: 600 }}><XCircle size={14} /> Audio splicing detected</div>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "#10B981", fontWeight: 600 }}><CheckCircle size={14} /> No splicing — Authentic audio</div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-          </CollapsibleCard>
+          </div>
         )}
 
-        {/* Feedback */}
-        <div
-          style={{
-            backgroundColor: "#FFFFFF",
-            border: `1px solid ${BORDER}`,
-            borderRadius: 12,
-            padding: "24px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: 16,
-          }}
-        >
-          <div>
-            <div style={{ fontWeight: 700, color: NAVY, marginBottom: 4 }}>Was this analysis helpful?</div>
-            <div style={{ fontSize: 13, color: TEXT_MUTED }}>Your feedback helps us improve our accuracy</div>
+        {/* RELATED ARTICLES */}
+        {articles.length > 0 && (
+          <div style={{ animation: "fadeInUp 0.6s cubic-bezier(0.23,1,0.32,1) 1s both" }}>
+            <div className="glass-panel" style={{ padding: "36px 38px", marginBottom: 28 }}>
+              <div className="section-head">
+                <div className="section-head-icon" style={{ background: "rgba(6,182,212,0.06)", border: "1px solid rgba(6,182,212,0.08)" }}>
+                  <BookOpen size={17} color="#0891B2" />
+                </div>
+                <div>
+                  <h3>Related Coverage</h3>
+                  <p style={{ fontSize: 13, color: "#94A3B8", margin: "4px 0 0" }}>
+                    {theme.isFake ? "See what credible sources actually report" : "Other sources covering this story"}
+                  </p>
+                </div>
+              </div>
+              {analysisData.web_search_evidence?.search_performed && (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 16px", background: "rgba(13,148,136,0.04)", border: "1px solid rgba(13,148,136,0.08)", borderRadius: 10, marginBottom: 20, fontSize: 12, color: "#0D9488", fontWeight: 600 }}>
+                  <Search size={12} />
+                  {analysisData.web_search_evidence.total_results_found} sources searched · {analysisData.web_search_evidence.news_results_count} news articles
+                </div>
+              )}
+              {articles.slice(0, 6).map((article: any, i: number) => (
+                <a key={i} href={article.url || "#"} target="_blank" rel="noopener noreferrer" className="article-card" style={{ animation: `claimSlide 0.4s cubic-bezier(0.23,1,0.32,1) ${1.05 + i * 0.06}s both` }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 11, background: "rgba(13,148,136,0.05)", border: "1px solid rgba(13,148,136,0.06)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Link2 size={16} color="#0D9488" />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: "#0F172A", marginBottom: 4, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{article.title}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, color: "#0D9488", fontWeight: 500 }}>{article.source_name}</span>
+                      {article.is_credible && <span style={{ fontSize: 10, fontWeight: 700, color: "#10B981", background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.1)", borderRadius: 5, padding: "2px 7px" }}>Credible</span>}
+                    </div>
+                  </div>
+                  <ChevronRight size={16} color="#CBD5E1" className="article-arrow" />
+                </a>
+              ))}
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <button
-              onClick={() => setFeedback("up")}
-              style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "9px 16px",
-                border: `1.5px solid ${feedback === "up" ? GREEN : BORDER}`,
-                borderRadius: 8,
-                backgroundColor: feedback === "up" ? "#F0FDF4" : "#FFFFFF",
-                cursor: "pointer", fontSize: 13, fontWeight: 600,
-                color: feedback === "up" ? GREEN : TEXT,
-              }}
-            >
-              <ThumbsUp size={14} /> Helpful
+        )}
+
+        {/* FEEDBACK */}
+        <div className="glass-sm" style={{ padding: "28px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 18, animation: "fadeInUp 0.6s cubic-bezier(0.23,1,0.32,1) 1.15s both" }}>
+          <div>
+            <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: 4, fontSize: 15 }}>Was this analysis helpful?</div>
+            <div style={{ fontSize: 13, color: "#94A3B8" }}>Your feedback directly improves our AI accuracy</div>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={() => setFeedback("up")} className="fb-btn" style={{ border: `1.5px solid ${feedback === "up" ? "rgba(16,185,129,0.3)" : "rgba(226,232,240,0.5)"}`, background: feedback === "up" ? "rgba(16,185,129,0.06)" : "rgba(255,255,255,0.4)", color: feedback === "up" ? "#10B981" : "#64748B" }}>
+              <ThumbsUp size={15} /> Yes, helpful
             </button>
-            <button
-              onClick={() => setFeedback("down")}
-              style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "9px 16px",
-                border: `1.5px solid ${feedback === "down" ? RED : BORDER}`,
-                borderRadius: 8,
-                backgroundColor: feedback === "down" ? "#FEF2F2" : "#FFFFFF",
-                cursor: "pointer", fontSize: 13, fontWeight: 600,
-                color: feedback === "down" ? RED : TEXT,
-              }}
-            >
-              <ThumbsDown size={14} /> Not helpful
+            <button onClick={() => setFeedback("down")} className="fb-btn" style={{ border: `1.5px solid ${feedback === "down" ? "rgba(239,68,68,0.3)" : "rgba(226,232,240,0.5)"}`, background: feedback === "down" ? "rgba(239,68,68,0.06)" : "rgba(255,255,255,0.4)", color: feedback === "down" ? "#EF4444" : "#64748B" }}>
+              <ThumbsDown size={15} /> Not helpful
             </button>
           </div>
         </div>
